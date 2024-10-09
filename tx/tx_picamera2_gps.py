@@ -146,6 +146,7 @@ def post_process_image(filename):
 	global gps, max_altitude, args, tx
 
 	# Try and grab current GPS data snapshot
+	gps_exif_commmand = None
 	try:
 		if gps != None:
 			gps_state = gps.read_state()
@@ -167,6 +168,11 @@ def post_process_image(filename):
 					int(max_altitude),
 					gps_state['ground_speed'],
 					gps_state['ascent_rate'])
+				gps_exif_commmand = "exiftool -GPSLatitude*=%.5f -GPSLongitude*=%.5f -GPSAltitude*=%d " % (
+					gps_state['latitude'],
+					gps_state['longitude'],
+					int(gps_state['altitude'])
+				)
 		else:
 			gps_string = ""
 	except:
@@ -188,6 +194,12 @@ def post_process_image(filename):
 	return_code = os.system(overlay_str)
 	if return_code != 0:
 		tx.transmit_text_message("Image Overlay operation failed! (Possible kernel Oops? Maybe set arm_freq to 700 MHz)")
+
+	if gps_exif_commmand:
+		gps_exif_commmand += filename
+		return_code = os.system(gps_exif_commmand)
+		if return_code != 0:
+			tx.transmit_text_message("Image EXIF GPS data update failed!")
 
 	return
 
