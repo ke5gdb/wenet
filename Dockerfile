@@ -9,8 +9,8 @@ RUN apt-get update && \
     build-essential cmake git libusb-1.0-0-dev pkg-config libatlas-base-dev \
     python3 python3-dev python3-pip python3-setuptools python3-numpy python3-wheel \
     libairspy-dev libairspyhf-dev libavahi-client-dev libbsd-dev libfftw3-dev \
-    libhackrf-dev libiniparser-dev libncurses5-dev libopus-dev librtlsdr-dev \
-    libusb-1.0-0-dev libusb-dev portaudio19-dev libasound2-dev uuid-dev rsync && \
+    libhackrf-dev libiniparser-dev libncurses5-dev libopus-dev libogg-dev librtlsdr-dev \
+    libusb-1.0-0-dev libusb-dev portaudio19-dev libasound2-dev libsamplerate0-dev uuid-dev rsync && \
   rm -rf /var/lib/apt/lists/*
 
 # Compile and install rtl-sdr.
@@ -29,15 +29,15 @@ RUN git clone https://github.com/fsphil/ssdv.git /root/ssdv && \
   DESTDIR=/root/target make install && \
   rm -rf /root/ssdv
 
-# Compile and install pcmcat and tune from KA9Q-Radio
+# Compile and install pcmrecord from KA9Q-Radio
 RUN git clone https://github.com/ka9q/ka9q-radio.git /root/ka9q-radio && \
-#RUN git clone https://github.com/fventuri/ka9q-radio.git /root/ka9q-radio && \
   cd /root/ka9q-radio && \
-  git checkout aa7791f && \
-#  git checkout sdrplay && \
-  make -f Makefile.linux pcmcat tune && \
+  git checkout 4025a34db6e88dce87b8f67c7eb9cc339b920261  && \
+  make -f Makefile.linux \
+    pcmrecord \
+    && \
   mkdir -p /root/target/usr/local/bin/ && \
-  cp pcmcat /root/target/usr/local/bin/ && \
+  cp pcmrecord /root/target/usr/local/bin/ && \
   rm -rf /root/ka9q-radio
 
 # Install Python packages.
@@ -51,7 +51,6 @@ RUN --mount=type=cache,target=/root/.cache/pip pip3 install \
     simple-websocket \
     requests \
     sondehub
-
 
 # Copy in wenet.
 COPY . /root/wenet
@@ -75,6 +74,8 @@ RUN apt-get update && \
   python3 \
   python3-numpy \
   libbsd0 \
+  libopus0 \
+  libogg0 \
   avahi-utils \
   libnss-mdns \
   tini && \
