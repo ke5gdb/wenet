@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Calculate Container Metadata
         id: meta
@@ -36,7 +36,7 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Cache Layers
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: /tmp/buildx-cache
           key: buildx-cache-${{ github.sha }}
