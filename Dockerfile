@@ -34,10 +34,11 @@ RUN git clone https://github.com/ka9q/ka9q-radio.git /root/ka9q-radio && \
   cd /root/ka9q-radio && \
   git checkout 4025a34db6e88dce87b8f67c7eb9cc339b920261  && \
   make -f Makefile.linux \
-    pcmrecord \
+    pcmrecord pcmcat \
     && \
   mkdir -p /root/target/usr/local/bin/ && \
   cp pcmrecord /root/target/usr/local/bin/ && \
+  cp pcmcat /root/target/usr/local/bin/ && \
   rm -rf /root/ka9q-radio
 
 # Install Python packages.
