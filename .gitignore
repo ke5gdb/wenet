@@ -1,0 +1,5 @@
+tx/tx_images/*
+*.log
+*.pyc
+*.so
+*.ssdv

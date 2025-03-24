@@ -98,6 +98,16 @@ def handle_gps_data(gps_data):
 	if (gps_data['altitude'] > max_altitude) and (gps_data['gpsFix'] == 3):
 		max_altitude = gps_data['altitude']
 
+	# Write blurb to file for TTS engine to announce altitude
+	f = open("/tmp/gps.txt", '+w')
+	f.write("eeeee\n")
+	if gps_data['gpsFix'] == 3:
+		f.write("Altitude %d feet.\n" % (gps_data['altitude'] * 3.28084))
+	if gps_data['altitude'] < max_altitude and gps_data['altitude'] > 3000:
+		f.write("Burst detected\n")
+	f.write("K E 5 G D B balloon\n")
+	f.close()
+
 	# If we have GPS lock, set the system clock to it. (Only do this once.)
 	if (gps_data['gpsFix'] == 3) and not system_time_set:
 		dt = gps_data['datetime']

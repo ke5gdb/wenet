@@ -269,6 +269,8 @@ class WenetPiCamera2(object):
         # Copy best image to target filename.
         self.debug_message("Copying image to storage with filename %s" % filename)
         os.system("cp %s %s" % (largest_pic, filename))
+        os.system("ln -sf %s _latest.jpg" % (filename))
+
         # Clean up temporary images.
         os.system("rm %s_*.jpg" % self.temp_filename_prefix)
 
@@ -323,7 +325,7 @@ class WenetPiCamera2(object):
         defined using a timestamp.
 
         Use the run() and stop() functions to start/stop this running.
-        
+
         Keyword Arguments:
         destination_directory:	Folder to save images to. Both raw JPEG and SSDV images are saved here.
         tx:		A reference to a PacketTX Object, which is used to transmit packets, and interrogate the TX queue.
