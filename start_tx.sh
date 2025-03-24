@@ -10,10 +10,10 @@
 
 # A callsign which will be included in the Wenet Packets.
 # This MUST be <= 6 characters long.
-MYCALL=N0CALL
+MYCALL=KE5GDB
 
 # The centre frequency of the Wenet transmission, in MHz.
-TXFREQ=443.500
+TXFREQ=431.5
 
 # Transmit power, in dBm
 # Allowed values are from 2 through 17 dBm.
@@ -28,7 +28,7 @@ GPSBAUD=115200
 # Image settings
 # Image scaling - Scale the 'native' image resolution of the attached camera by this much
 # before transmitting.
-TX_IMAGE_SCALING=0.5
+TX_IMAGE_SCALING=0.4
 
 # White Balance settings
 # Allowed Values: Auto, Daylight, Cloudy, Incandescent, Tungesten, Fluorescent, Indoor
@@ -50,7 +50,7 @@ BAUDRATE=115200
 # RFM98W SPI Device
 # SPI device number of your RFM98W chip
 # This will either be 0 or 1 on a RPi.
-SPIDEVICE=0
+SPIDEVICE=1
 
 # Modulation UART
 # The UART used to modulate the RFM98W with our Wenet transmission
@@ -127,6 +127,7 @@ sleep 10
 # --use_focus_fom
 
 python3 tx_picamera2_gps.py \
+    --logo /home/pi/k5rwk_logo.png \
     --rfm98w $SPIDEVICE \
     --baudrate $BAUDRATE \
     --frequency $TXFREQ \
@@ -137,4 +138,6 @@ python3 tx_picamera2_gps.py \
     --resize $TX_IMAGE_SCALING \
     --whitebalance $WHITEBALANCE \
     --exposure $EXPOSURE \
+    --lensposition -1 \
+    --afoffset -99 \
     $MYCALL
