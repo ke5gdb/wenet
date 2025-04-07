@@ -3,6 +3,9 @@
 # -------------------
 FROM debian:bookworm-slim AS build
 
+# ka9q-radio commit:
+ARG KA9Q_REF=cc22b5f5e3c26c37df441ebff29eea7d59031afd
+
 # Install build dependencies.
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
@@ -10,7 +13,8 @@ RUN apt-get update && \
     python3 python3-dev python3-pip python3-setuptools python3-numpy python3-wheel \
     libairspy-dev libairspyhf-dev libavahi-client-dev libbsd-dev libfftw3-dev \
     libhackrf-dev libiniparser-dev libncurses5-dev libopus-dev libogg-dev librtlsdr-dev \
-    libusb-1.0-0-dev libusb-dev portaudio19-dev libasound2-dev libsamplerate0-dev uuid-dev rsync && \
+    libusb-1.0-0-dev libusb-dev portaudio19-dev libasound2-dev libsamplerate0-dev uuid-dev \
+    rsync unzip && \
   rm -rf /var/lib/apt/lists/*
 
 # Compile and install rtl-sdr.
@@ -30,15 +34,14 @@ RUN git clone https://github.com/fsphil/ssdv.git /root/ssdv && \
   rm -rf /root/ssdv
 
 # Compile and install pcmrecord from KA9Q-Radio
-RUN git clone https://github.com/ka9q/ka9q-radio.git /root/ka9q-radio && \
-  cd /root/ka9q-radio && \
-  git checkout 4025a34db6e88dce87b8f67c7eb9cc339b920261  && \
-  make -f Makefile.linux \
-    pcmrecord pcmcat \
-    && \
+ADD https://github.com/ka9q/ka9q-radio/archive/$KA9Q_REF.zip /tmp/ka9q-radio.zip
+RUN unzip /tmp/ka9q-radio.zip -d /tmp && \
+  cd /tmp/ka9q-radio-$KA9Q_REF && \
+  make \
+    -f Makefile.linux \
+    pcmrecord && \
   mkdir -p /root/target/usr/local/bin/ && \
   cp pcmrecord /root/target/usr/local/bin/ && \
-  cp pcmcat /root/target/usr/local/bin/ && \
   rm -rf /root/ka9q-radio
 
 # Install Python packages.
