@@ -201,6 +201,7 @@ if __name__ == "__main__":
     try:
         while True:
             data = sys.stdin.readline()
+            stats_parser.log_info(data)
 
             # An empty line indicates that stdin has been closed.
             if data == '':

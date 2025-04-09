@@ -55,15 +55,8 @@ WEB_VIEWER_PID=$!
 # Calculate the SDR sample rate required.
 SDR_RATE=$(("$BAUD_RATE" * "$OVERSAMPLING"))
 
-# Calculate the SDR centre frequency.
-# The fsk_demod acquisition window is from Rs/2 to Fs/2 - Rs.
-# Given Fs is Rs * Os  (Os = oversampling), we can calculate the required tuning offset with the equation:
-# Offset = Fcenter - Rs*(Os/4 - 0.25)
-# /1 to return integer
-RX_SSB_FREQ=$(echo "($RXFREQ - $BAUD_RATE * ($OVERSAMPLING/4 - 0.25))/1" | bc)
-
 echo "Using SDR Sample Rate: $SDR_RATE Hz"
-echo "Using SDR Centre Frequency: $RX_SSB_FREQ Hz"
+echo "Using SDR Centre Frequency: $RXFREQ Hz"
 
 if [ "$SDR_TYPE" = "RTLSDR" ] ; then
   if [ "$BIAS" = "1" ]; then
@@ -73,15 +66,15 @@ if [ "$SDR_TYPE" = "RTLSDR" ] ; then
 
   # Start up the receive chain.
   echo "Using Complex Samples."
-  rtl_sdr -d "$DEVICE" -s "$SDR_RATE" -f "$RX_SSB_FREQ" -g "$GAIN" - | \
-  ./fsk_demod --cu8 -s --stats=100 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RX_SSB_FREQ --samplerate $SDR_RATE) | \
+  rtl_sdr -d "$DEVICE" -s "$SDR_RATE" -f "$RXFREQ" -g "$GAIN" - | \
+  ./fsk_demod --cu8 -s --stats=100 -p "$OVERSAMPLING" -b -"$BAUD_RATE" -u "$BAUD_RATE" 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RXFREQ --samplerate $SDR_RATE) | \
   ./drs232_ldpc - -  -vv 2> /dev/null | \
   python3 rx_ssdv.py --partialupdate 16 --headless & 
 elif [ "$SDR_TYPE" = "KA9Q" ] ; then
   # Start receiver
   echo "Starting pcmrecord and demodulator"
   pcmrecord --catmode --raw "$DEVICE" --timeout 1 | \
-  ./fsk_demod --cs16 -s --stats=100 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RX_SSB_FREQ --samplerate $SDR_RATE --image_port $IMAGE_PORT) | \
+  ./fsk_demod --cs16 -s --stats=100 -p "$OVERSAMPLING" -b -"$BAUD_RATE" -u "$BAUD_RATE" 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RXFREQ --samplerate $SDR_RATE --image_port $IMAGE_PORT) | \
   ./drs232_ldpc - -  -vv 2> /dev/null | \
   python3 rx_ssdv.py --partialupdate 16 --headless --image_port $IMAGE_PORT & 
 else
