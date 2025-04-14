@@ -80,7 +80,7 @@ if [ "$SDR_TYPE" = "RTLSDR" ] ; then
 elif [ "$SDR_TYPE" = "KA9Q" ] ; then
   # Start receiver
   echo "Starting pcmrecord and demodulator"
-  pcmrecord --catmode --raw "$DEVICE" --timeout 1 | \
+  pcmrecord --catmode --raw "$DEVICE" --timeout 5 | \
   ./fsk_demod --cs16 -s --stats=100 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RX_SSB_FREQ --samplerate $SDR_RATE --image_port $IMAGE_PORT) | \
   ./drs232_ldpc - -  -vv 2> /dev/null | \
   python3 rx_ssdv.py --partialupdate 16 --headless --image_port $IMAGE_PORT & 
