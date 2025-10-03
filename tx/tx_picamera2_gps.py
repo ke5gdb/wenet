@@ -129,6 +129,16 @@ def handle_gps_data(gps_data):
 	if (gps_data['altitude'] > max_altitude) and (gps_data['gpsFix'] == 3):
 		max_altitude = gps_data['altitude']
 
+	# Write blurb to file for TTS engine to announce altitude
+	f = open("/tmp/gps.txt", '+w')
+	f.write("eeeee\n")
+	if gps_data['gpsFix'] == 3:
+		f.write("Altitude %d feet.\n" % (gps_data['altitude'] * 3.28084))
+	if gps_data['altitude'] < max_altitude and gps_data['altitude'] > 3000:
+		f.write("Burst detected\n")
+	f.write("K E 5 G D B balloon\n")
+	f.close()
+
 	# If we have GPS lock, set the system clock to it. (Only do this once.)
 	if (gps_data['gpsFix'] == 3) and not system_time_set:
 		dt = gps_data['datetime']
@@ -178,6 +188,7 @@ def post_process_image(filename):
 	global gps, max_altitude, args, tx
 
 	# Try and grab current GPS data snapshot
+	gps_exif_commmand = None
 	try:
 		if gps != None:
 			gps_state = gps.read_state()
@@ -199,6 +210,11 @@ def post_process_image(filename):
 					int(max_altitude),
 					gps_state['ground_speed'],
 					gps_state['ascent_rate'])
+				gps_exif_commmand = "exiftool -GPSLatitude*=%.5f -GPSLongitude*=%.5f -GPSAltitude*=%d " % (
+					gps_state['latitude'],
+					gps_state['longitude'],
+					int(gps_state['altitude'])
+				)
 		else:
 			gps_string = ""
 	except:
@@ -220,6 +236,12 @@ def post_process_image(filename):
 	return_code = os.system(overlay_str)
 	if return_code != 0:
 		tx.transmit_text_message("Image Overlay operation failed! (Possible kernel Oops? Maybe set arm_freq to 700 MHz)")
+
+	if gps_exif_commmand:
+		gps_exif_commmand += filename
+		return_code = os.system(gps_exif_commmand)
+		if return_code != 0:
+			tx.transmit_text_message("Image EXIF GPS data update failed!")
 
 	return
 

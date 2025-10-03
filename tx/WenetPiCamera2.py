@@ -152,7 +152,7 @@ class WenetPiCamera2(object):
 
         # Apply a lens offset if we have been provided one.
         if self.af_custom_map:
-            tuning = Picamera2.load_tuning_file("imx708.json")
+            tuning = Picamera2.load_tuning_file("imx708_wide.json")
             map = Picamera2.find_tuning_algo(tuning, "rpi.af")["map"]
             self.debug_message(f"Default Focus Mapping: {map}")
             
@@ -383,6 +383,7 @@ class WenetPiCamera2(object):
         # Copy best image to target filename.
         self.debug_message("Copying image to storage with filename %s" % filename)
         os.system("cp %s %s" % (best_pic, filename))
+        os.system("ln -sf %s _latest.jpg" % (filename))
 
         # Clean up temporary images.
         os.system("rm %s_*.jpg" % self.temp_filename_prefix)
@@ -438,7 +439,7 @@ class WenetPiCamera2(object):
         defined using a timestamp.
 
         Use the run() and stop() functions to start/stop this running.
-        
+
         Keyword Arguments:
         destination_directory:	Folder to save images to. Both raw JPEG and SSDV images are saved here.
         tx:		A reference to a PacketTX Object, which is used to transmit packets, and interrogate the TX queue.
