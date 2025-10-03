@@ -1,0 +1,7 @@
+tx/tx_images/*
+*.log
+*.pyc
+*.so
+*.ssdv
+*.jpg
+pisstv_repo/

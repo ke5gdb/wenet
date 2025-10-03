@@ -1,6 +1,6 @@
 # /usr/bin/env bash
 #
-# Helper script to start up the Wenet Docker image.
+# Helper script to start up the Wenet Docker image - TESTING branch
 #
 # This script is intended to be downloaded using wget or otherwise,
 # and modified prior to use.
@@ -89,7 +89,7 @@ if [ "$SDR_TYPE" = "RTLSDR" ] ; then
 		--device /dev/bus/usb \
 		-p $WEB_PORT:$WEB_PORT \
 		--restart="always" \
-		ghcr.io/projecthorus/wenet:latest
+		ghcr.io/projecthorus/wenet:testing
 elif [ "$SDR_TYPE" = "KA9Q" ] ; then
 	docker run -d \
 		--name wenet \
@@ -111,7 +111,7 @@ elif [ "$SDR_TYPE" = "KA9Q" ] ; then
 		--device /dev/bus/usb \
 		--network host \
 		--restart="always" \
-		ghcr.io/projecthorus/wenet:latest
+		ghcr.io/projecthorus/wenet:testing
 
 else
 	echo "No valid SDR type specified! Please enter RTLSDR or KA9Q!"

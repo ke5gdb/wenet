@@ -64,6 +64,14 @@ def flask_index():
     """ Render main index page """
     return flask.render_template('index.html')
 
+@app.route("/get_config")
+def serve_config():
+    """ Return Configuration Information """
+    global my_callsign
+    return json.dumps({
+        "version": WENET_VERSION,
+        "callsign": my_callsign
+    })
 
 @app.route("/latest.jpg")
 def serve_latest_image():
@@ -151,6 +159,15 @@ def handle_gps_telemetry(gps_data):
             _extra_fields['load_avg_5'] = gps_data['load_avg_5']
             _extra_fields['load_avg_15'] = gps_data['load_avg_15']
             _extra_fields['disk_percent'] = gps_data['disk_percent']
+
+            if gps_data['lens_position'] > -999.0:
+                _extra_fields['lens_position'] = gps_data['lens_position']
+
+            if gps_data['sensor_temp'] > -999.0:
+                _extra_fields['sensor_temp'] = gps_data['sensor_temp']
+
+            if gps_data['focus_fom'] > -999.0:
+                _extra_fields['focus_fom'] = gps_data['focus_fom']
 
         sondehub.add_telemetry(
             current_callsign + "-Wenet",

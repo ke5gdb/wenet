@@ -53,9 +53,13 @@ class WenetPiCamera2(object):
                 horizontal_flip = False,
                 whitebalance = 'auto',
                 lens_position = -1,
+                af_window = None,
+                af_offset = 0,
+                exposure_value = 0.0,
+                use_focus_fom = False,
                 temp_filename_prefix = 'picam_temp',
                 debug_ptr = None,
-                init_retries = 10
+                init_retries = 10,
                 ):
 
         """ Instantiate a WenetPiCam Object
@@ -78,7 +82,15 @@ class WenetPiCamera2(object):
             lens_position: Lens Position setting (float), 0.0 = Infinity, 10 = very close.
                    Only usable on Pi Camera v3 modules.
                    Set to -1 to use continuous autofocus mode.
-
+            af_window:  Area in the frame to use for autofocus. Defined as (x,y,w,h), all values between 0-1.0, where
+                        x: Starting X position of rectangle within frame, as fraction of frame width
+                        y: Starting Y position of rectangle within frame, as fraction of frame height
+                        w: Width of rectangle, as fraction of frame width
+                        h: Height of rectangle, as fraction of frame height
+                        If not provided, the default windowing (approx centre third of width/height) will be used.
+            af_offset:  Offset the lens by a fixed dioptre. May help with autofocus during flights.
+            exposure_value: Add a exposure compensation. Defaults to 0.
+            use_focus_fom: Set to True to use FocusFoM data to select the best image instead of file size.
             temp_filename_prefix: prefix used for temporary files.
 
             debug_ptr:	'pointer' to a function which can handle debug messages.
@@ -96,7 +108,16 @@ class WenetPiCamera2(object):
         self.horizontal_flip = horizontal_flip
         self.vertical_flip = vertical_flip
         self.lens_position = lens_position
+        self.af_window = af_window
+        self.af_offset = af_offset
+        self.exposure_value = exposure_value
+        self.use_focus_fom = use_focus_fom
+        self.af_window_rectangle = None # Calculated during init
         self.autofocus_mode = False
+
+        # Camera metadata capture, so we can poll for camera stats regularly
+        self.capture_in_progress = True
+        self.cam_metadata = None
 
         if whitebalance.lower() in self.wb_lookup:
             self.whitebalance = self.wb_lookup[whitebalance.lower()]
@@ -127,22 +148,64 @@ class WenetPiCamera2(object):
         except:
             pass
 
-        self.cam = Picamera2()
+        # Apply a lens offset if we have been provided one.
+        if self.af_offset != 0:
+            tuning = Picamera2.load_tuning_file("imx708_wide.json")
+            map = Picamera2.find_tuning_algo(tuning, "rpi.af")["map"]
+            self.debug_message(f"Default Focus Mapping: {map}")
+
+            if self.af_offset == -99:
+                # Custom map for testing the full extents of the lens range.
+                map[0] = 0.0
+                map[1] = 475.0
+                map[2] = 35.0
+                map[3] = 600.0
+            else:
+                # Otherwise, apply an offset
+                offset_hw = self.af_offset * (map[3]-map[1])/(map[2]-map[0])
+                for i in range(1, len(map), 2):
+                    map[i] += offset_hw
+            
+            self.debug_message(f"Modified Focus Mapping: {Picamera2.find_tuning_algo(tuning, 'rpi.af')['map']}")
+
+            self.cam = Picamera2(0, tuning=tuning)
+        
+        else:
+            self.cam = Picamera2()
 
         self.camera_properties = self.cam.camera_properties
 
-        self.debug_ptr("Camera Native Resolution: " + str(self.camera_properties['PixelArraySize']))
+        self.debug_message("Camera Native Resolution: " + str(self.camera_properties['PixelArraySize']))
+
+        # Now we can calculate the AF Window information, if we have been ask to do so
+        if self.af_window:
+            _frame_x = self.camera_properties['PixelArraySize'][0]
+            _frame_y = self.camera_properties['PixelArraySize'][1]
+            try:
+                _fields = self.af_window.split(",")
+                if len(_fields) == 4:
+                    _x = int(float(_fields[0])*_frame_x)
+                    _y = int(float(_fields[1])*_frame_y)
+                    _w = int(float(_fields[2])*_frame_x)
+                    _h = int(float(_fields[3])*_frame_y)
+                    self.af_window_rectangle = (_x, _y, _w, _h)
+                    self.debug_message(f"Using AF Window: {str(self.af_window_rectangle)}")
+                else:
+                    self.debug_message("Invalid AF Window definition! Needs 4 fields.")
+            
+            except:
+                self.af_window_rectangle = None
 
         # If the user has explicitly specified the transmit image resolution, use it.
         if type(self.tx_resolution_init) == tuple:
             self.tx_resolution = self.tx_resolution_init
-            self.debug_ptr(f"Transmit Resolution set to {str(self.tx_resolution)}")
+            self.debug_message(f"Transmit Resolution set to {str(self.tx_resolution)}")
         # Otherwise, has the user provided a floating point scaling factor?
         elif type(self.tx_resolution_init) == float:
             res_x = 16*int(self.camera_properties['PixelArraySize'][0]*self.tx_resolution_init/16)
             res_y = 16*int(self.camera_properties['PixelArraySize'][1]*self.tx_resolution_init/16)
             self.tx_resolution = (res_x, res_y)
-            self.debug_ptr(f"Transmit Resolution set to {str(self.tx_resolution)}, scaled {self.tx_resolution_init} from native.")
+            self.debug_message(f"Transmit Resolution set to {str(self.tx_resolution)}, scaled {self.tx_resolution_init} from native.")
 
         # Configure camera, including flip settings.
         capture_config = self.cam.create_still_configuration(
@@ -155,7 +218,9 @@ class WenetPiCamera2(object):
         self.cam.set_controls(
             {'AwbMode': self.whitebalance,
             'AeMeteringMode': controls.AeMeteringModeEnum.Matrix,
-            'NoiseReductionMode': controls.draft.NoiseReductionModeEnum.Off}
+            'ExposureValue': self.exposure_value
+            #'NoiseReductionMode': controls.draft.NoiseReductionModeEnum.Off
+            }
             )
 
         # Set Pi Camera 3 lens position
@@ -165,11 +230,18 @@ class WenetPiCamera2(object):
                 self.cam.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.lens_position})
             else:
                 self.cam.set_controls({"AfMode": controls.AfModeEnum.Continuous})
+                # Set AF Window if defined
+                if self.af_window_rectangle:
+                    self.cam.set_controls({"AfWindows": [self.af_window_rectangle]})
+
+
 
         # In autofocus mode, we need to start the camera now, so it can start figuring out its focus.
         if 'LensPosition' in self.cam.camera_controls and self.lens_position<0.0:
             self.debug_message("Enabling camera for image capture")
             self.cam.start()
+            self.capture_in_progress = False
+
 
         # If we are not in autofocus mode, we start the camera only when we need it.
         # This may help deal with crashes after the camera is running for a long time, and also
@@ -213,7 +285,9 @@ class WenetPiCamera2(object):
         self.cam.set_controls(
             {'AwbMode': self.whitebalance,
             'AeMeteringMode': controls.AeMeteringModeEnum.Matrix,
-            'NoiseReductionMode': controls.draft.NoiseReductionModeEnum.Off}
+            'ExposureValue': self.exposure_value
+            #'NoiseReductionMode': controls.draft.NoiseReductionModeEnum.Off
+            }
             )
 
         # Set Pi Camera 3 lens position, or ensure we are in continuous autofocus mode.
@@ -223,7 +297,10 @@ class WenetPiCamera2(object):
                 self.cam.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.lens_position})
             else:
                 self.cam.set_controls({"AfMode": controls.AfModeEnum.Continuous})
-
+                # Set AF Window if defined
+                if self.af_window_rectangle:
+                    print("Set AfWindows")
+                    self.cam.set_controls({"AfWindows": [self.af_window_rectangle]})
 
         # If we're not using autofocus, then camera would not have been started yet.
         # Start it now.
@@ -231,6 +308,7 @@ class WenetPiCamera2(object):
             try:
                 self.debug_message("Enabling camera for image capture")
                 self.cam.start()
+                self.capture_in_progress = False
             except Exception as e:
                 self.debug_message("Could not enable camera! - " + str(e))
                 sleep(1)
@@ -239,12 +317,23 @@ class WenetPiCamera2(object):
         sleep(3)
 
         # Attempt to capture a set of images.
+        img_metadata = []
+        focus_fom = []
         for i in range(self.num_images):
             self.debug_message("Capturing Image %d of %d" % (i+1,self.num_images))
             # Wrap this in error handling in case we lose the camera for some reason.
 
             try:
-                self.cam.capture_file("%s_%d.jpg" % (self.temp_filename_prefix,i))
+                self.capture_in_progress = True
+                # Capture image
+                metadata = self.cam.capture_file("%s_%d.jpg" % (self.temp_filename_prefix,i))
+                # Save metadata for this frame 
+                img_metadata.append(metadata.copy())
+                # Separately store the focus FoM so we can look for the max easily.
+                if 'FocusFoM' in metadata:
+                    focus_fom.append(metadata['FocusFoM'])
+                
+                self.capture_in_progress = False
                 print(f"Image captured: {time.time()}")
                 if self.image_delay > 0:
                     sleep(self.image_delay)
@@ -255,20 +344,45 @@ class WenetPiCamera2(object):
         
         if 'LensPosition' not in self.cam.camera_controls or self.lens_position>=0.0:
             self.debug_message("Disabling camera.")
+            self.capture_in_progress = True
             self.cam.stop()
+
+        if len(focus_fom)>0:
+            self.debug_message(f"Focus FoM Values: {str(focus_fom)}")
 
         # Otherwise, continue to pick the 'best' image based on filesize.
         self.debug_message("Choosing Best Image.")
-        pic_list = glob.glob("%s_*.jpg" % self.temp_filename_prefix)
-        pic_sizes = []
-        # Iterate through list of images and get the file sizes.
-        for pic in pic_list:
-            pic_sizes.append(os.path.getsize(pic))
-        largest_pic = pic_list[pic_sizes.index(max(pic_sizes))]
+
+        if self.use_focus_fom and len(focus_fom) > 0:
+            # Use FocusFoM data to pick the best image.
+            _best_pic_idx = focus_fom.index(max(focus_fom))
+            best_pic = "%s_%d.jpg" % (self.temp_filename_prefix,_best_pic_idx)
+            
+        else:
+            # Otherwise use the filesize of the resultant JPEG files.
+            # Bigger JPEG = Sharper image
+            pic_list = glob.glob("%s_*.jpg" % self.temp_filename_prefix)
+            pic_sizes = []
+            # Iterate through list of images and get the file sizes.
+            for pic in pic_list:
+                pic_sizes.append(os.path.getsize(pic))
+            _best_pic_idx = pic_sizes.index(max(pic_sizes))
+            best_pic = pic_list[_best_pic_idx]
+
+        # Report the image pick results.
+        if 'LensPosition' in img_metadata[_best_pic_idx]:
+            if self.use_focus_fom:
+                self.debug_message(f"Best Image was #{_best_pic_idx}, Lens Pos: {img_metadata[_best_pic_idx]['LensPosition']:.4f}, FocusFoM: {img_metadata[_best_pic_idx]['FocusFoM']}")
+            else:
+                self.debug_message(f"Best Image was #{_best_pic_idx}, Lens Pos: {img_metadata[_best_pic_idx]['LensPosition']:.4f}")
+        else:
+            self.debug_message(f"Best Image was #{_best_pic_idx}")
 
         # Copy best image to target filename.
         self.debug_message("Copying image to storage with filename %s" % filename)
-        os.system("cp %s %s" % (largest_pic, filename))
+        os.system("cp %s %s" % (best_pic, filename))
+        os.system("ln -sf %s _latest.jpg" % (filename))
+
         # Clean up temporary images.
         os.system("rm %s_*.jpg" % self.temp_filename_prefix)
 
@@ -323,7 +437,7 @@ class WenetPiCamera2(object):
         defined using a timestamp.
 
         Use the run() and stop() functions to start/stop this running.
-        
+
         Keyword Arguments:
         destination_directory:	Folder to save images to. Both raw JPEG and SSDV images are saved here.
         tx:		A reference to a PacketTX Object, which is used to transmit packets, and interrogate the TX queue.
@@ -479,6 +593,21 @@ class WenetPiCamera2(object):
         except Exception as e:
             self.debug_message("Error reading CPU Freq - %s" % str(e))
             return -1
+        
+    def get_camera_metadata(self):
+        """ 
+        Query the camera for metadata, but only if a capture is currently not running
+        (otherwise this can block for a while)
+        If a capture is in progress, return the previous data.
+        """
+        try:
+            if self.capture_in_progress == False:
+                if self.cam:
+                    self.cam_metadata = self.cam.capture_metadata()
+
+            return self.cam_metadata
+        except:
+            return None
 
 
 # Basic transmission test script. TODO - Fix this, this is all incorrect..

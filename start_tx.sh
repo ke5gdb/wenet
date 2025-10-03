@@ -10,28 +10,34 @@
 
 # A callsign which will be included in the Wenet Packets.
 # This MUST be <= 6 characters long.
-MYCALL=N0CALL
+MYCALL=KE5GDB
 
 # The centre frequency of the Wenet transmission, in MHz.
-TXFREQ=443.500
+TXFREQ=431.5
 
 # Transmit power, in dBm
 # Allowed values are from 2 through 17 dBm.
 TXPOWER=17
 
-# GPS Port
+# GPS Port and baud rate
 # Note that we only support uBlox GPS units
 # set this to none to disable GPS support
 GPSPORT=/dev/ttyACM0
+GPSBAUD=115200
 
 # Image settings
 # Image scaling - Scale the 'native' image resolution of the attached camera by this much
 # before transmitting.
-TX_IMAGE_SCALING=0.5
+TX_IMAGE_SCALING=0.4
 
 # White Balance settings
 # Allowed Values: Auto, Daylight, Cloudy, Incandescent, Tungesten, Fluorescent, Indoor
 WHITEBALANCE=Auto
+
+# Exposure compensation
+# Allowed values: -8.0 to 8.0
+# You may wish to adjust this to bump up the exposure a little.
+EXPOSURE=0.0
 
 # Refer near the end of this file for image flipping and overlay options
 
@@ -44,7 +50,7 @@ BAUDRATE=115200
 # RFM98W SPI Device
 # SPI device number of your RFM98W chip
 # This will either be 0 or 1 on a RPi.
-SPIDEVICE=0
+SPIDEVICE=1
 
 # Modulation UART
 # The UART used to modulate the RFM98W with our Wenet transmission
@@ -84,7 +90,7 @@ sleep 10
 # --waitforlock 10      Wait for up to 10 minutes before timing out and continuing anyway
 # --lockcount 60        Wait for 60 sequential valid 3D fixed before exiting (2 Hz update rate, so 60 -> 30 seconds)
 # --locksats 6          Only consider a fix as valid if it has more than 6 SVs in use.
-#python3 ublox.py --waitforlock 10 --lockcount 60 --locksats 6 $GPSPORT
+#python3 ublox.py --waitforlock 10 --lockcount 60 --locksats 6 --baudrate $GPSBAUD $GPSPORT
 
 
 # Start the main TX Script.
@@ -92,20 +98,47 @@ sleep 10
 # Additional configuration lines you may wish to add or remove before the $CALLSIGN line may include:
 # Flip the image vertically and horizontally (e.g. if the camera is mounted upside down)
 # --vflip --hflip \
+#
 # Add a logo overlay in the bottom right of the image. This must be a transparent PNG file.
 # --logo yourlogo.png \
+#
 # Set a fixed focus position on a PiCam v3 (NOTE: The Picamv3 focus drifts with temperature - beware!!!)
 # 0.0 = Infinity
 # --lensposition 0.0 \
+#
+# Set a user-defined AutoFocus Window Area, for use wiith PiCam v3 in Autofocus Mode
+# Must be provided as x,y,w,h  , with all values between 0-1.0, where:
+# x: Starting X position of rectangle within frame, as fraction of frame width
+# y: Starting Y position of rectangle within frame, as fraction of frame height
+# w: Width of rectangle, as fraction of frame width
+# h: Height of rectangle, as fraction of frame height
+# e.g:
+# --afwindow 0.25,0.25,0.5,0.5 \
+#
+# Set a fixed lens offset for the PiCam v3, in dioptres. May help with autofocus in cold temperatures.
+# The PiCam v3 can be offset by a maximum of -3 dioptres before hitting a hard-stop
+# Set this to -99.0 to set the PiCam v3 to use the entire lens travel range.
+# The modified focus mapping will be printed out on startup.
+# e.g. to offset by 1 dioptre:
+# --afoffset -1.0 \
+#
+# Use the Focus Figure-of-merit metadata to select the transmitted image, instead of selecting on file size
+# Only useful for lenses with autofocus (PiCam v3)
+# --use_focus_fom
 
 python3 tx_picamera2_gps.py \
+    --logo /home/pi/k5rwk_logo.png \
     --rfm98w $SPIDEVICE \
     --baudrate $BAUDRATE \
     --frequency $TXFREQ \
     --serial_port $SERIALPORT \
     --tx_power $TXPOWER \
     --gps $GPSPORT \
+    --gpsbaud $GPSBAUD \
     --resize $TX_IMAGE_SCALING \
     --whitebalance $WHITEBALANCE \
-    --vflip --hflip \
+    --exposure $EXPOSURE \
+    --lensposition -1 \
+    --afwindow 0.25,0.5,0.5,0.5 \
+    --afoffset -99 \
     $MYCALL
