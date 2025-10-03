@@ -24,9 +24,11 @@ parser.add_argument("callsign", default="N0CALL", help="Payload Callsign")
 parser.add_argument("--gps", default="none", help="uBlox GPS Serial port. Defaults to /dev/ttyACM0")
 parser.add_argument("--gpsbaud", default=115200, type=int, help="uBlox GPS Baud rate. (Default: 115200)")
 parser.add_argument("--logo", default="none", help="Optional logo to overlay on image.")
-parser.add_argument("--rfm98w", default=0, type=int, help="If set, configure a RFM98W on this SPI device number.")
+parser.add_argument("--rfm98w", default=None, type=int, help="If set, configure a RFM98W on this SPI device number.")
+parser.add_argument("--rfm98w-i2s", default=None, type=int, help="If set, configure a RFM98W on this SPI device number. Using I2S")
+parser.add_argument("--audio-device", default="hw:CARD=i2smaster,DEV=0", type=str, help="Alsa device string. Sets the audio device for rfm98w-i2s mode. (Default: hw:CARD=i2smaster,DEV=0)")
 parser.add_argument("--frequency", default=443.500, type=float, help="Transmit Frequency (MHz). (Default: 443.500 MHz)")
-parser.add_argument("--baudrate", default=115200, type=int, help="Wenet TX baud rate. (Default: 115200).")
+parser.add_argument("--baudrate", default=None, type=int, help="Wenet TX baud rate. (Default: 115200 for uart and 96000 for I2S). Known working I2S baudrates: 8000, 24000, 48000, 96000.")
 parser.add_argument("--serial_port", default="/dev/ttyAMA0", type=str, help="Serial Port for modulation.")
 parser.add_argument("--tx_power", default=17, type=int, help="Transmit power in dBm (Default: 17 dBm, 50mW. Allowed values: 2-17)")
 parser.add_argument("--vflip", action='store_true', default=False, help="Flip captured image vertically.")
@@ -35,13 +37,19 @@ parser.add_argument("--resize", type=float, default=0.5, help="Resize raw image 
 parser.add_argument("--whitebalance", type=str, default='daylight', help="White Balance setting: Auto, Daylight, Cloudy, Incandescent, Tungesten, Fluorescent, Indoor")
 parser.add_argument("--lensposition", type=float, default=-1.0, help="For PiCam v3, set the lens position. Default: -1 = Continuous Autofocus")
 parser.add_argument("--afwindow", type=str, default=None, help="For PiCam v3 Autofocus mode, set the AutoFocus window, x,y,w,h , in fractions of frame size. (Default: None = default)")
-parser.add_argument("--afoffset", type=float, default=0.0, help="For PiCam v3 Autofocus mode, offset the lens by this many dioptres (Default: 0 = No offset)")
+parser.add_argument("--afcustommap", type=str, default=None, help="For PiCam v3 Autofocus mode, set a custom lens focus mapping e.g. 0.0,0.0,15.0,1024.0 (Default: None = default)")
 parser.add_argument("--exposure", type=float, default=0.0, help="Exposure compensation. -8.0 to 8.0. Sets the ExposureValue control. (Default: 0.0)")
 parser.add_argument("--use_focus_fom", action='store_true', default=False, help="Use Focus FoM data instead of file size for image selection.")
 parser.add_argument("--num_images", type=int, default=5, help="Number of images to capture on each cycle. (Default: 5)")
 parser.add_argument("--image_delay", type=float, default=1.0, help="Delay time between each image capture. (Default: 1 second)")
 parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Show additional debug info.")
 args = parser.parse_args()
+
+if args.baudrate == None:
+	if args.rfm98w:
+		args.baudrate = 115200
+	elif args.rfm98w_i2s:
+		args.baudrate = 96000
 
 if args.verbose:
 	logging_level = logging.DEBUG
@@ -65,6 +73,14 @@ if args.rfm98w is not None:
 		frequency = args.frequency,
 		baudrate = args.baudrate,
 		serial_port = args.serial_port,
+		tx_power_dbm = args.tx_power
+	)
+elif args.rfm98w_i2s is not None:
+	radio = RFM98W_I2S(
+		spidevice = args.rfm98w_i2s,
+		baudrate = args.baudrate,
+		frequency = args.frequency,
+		audio_device= args.audio_device,
 		tx_power_dbm = args.tx_power
 	)
 # Other radio options would go here.
@@ -242,7 +258,8 @@ picam = WenetPiCamera2.WenetPiCamera2(
 		whitebalance=args.whitebalance,
 		lens_position=args.lensposition,
 		af_window=args.afwindow,
-		af_offset=args.afoffset,
+		af_custom_map=args.afcustommap,
+		exposure_value=args.exposure,
 		use_focus_fom=args.use_focus_fom
 		)
 # .. and start it capturing continuously.
