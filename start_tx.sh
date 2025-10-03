@@ -139,5 +139,6 @@ python3 tx_picamera2_gps.py \
     --whitebalance $WHITEBALANCE \
     --exposure $EXPOSURE \
     --lensposition -1 \
+    --afwindow 0.25,0.5,0.5,0.5 \
     --afoffset -99 \
     $MYCALL
