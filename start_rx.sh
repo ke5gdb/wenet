@@ -28,6 +28,18 @@ BIAS=0
 # Note that this will need the rtl_biast utility available, which means
 # building the rtl-sdr utils from this repo: https://github.com/rtlsdrblog/rtl-sdr
 
+# Wenet Mode Settings
+#
+# Uncomment one of the following!
+# Wenet 'Classic' (v1, RS232 framing)
+BAUD_RATE=115177
+OVERSAMPLING=8
+FRAMING_MODE=drs232_ldpc
+
+# Wenet v2 (96000 baud, no RS232 framing)
+#BAUD_RATE=96000
+#OVERSAMPLING=10
+#FRAMING_MODE=wenet_ldpc
 
 # Change the following path as appropriate.
 # If running this from a .desktop file, you may need to set an absolute path here
@@ -57,18 +69,6 @@ RX_FLOW=IQ
 
 
 
-
-#
-# Modem Settings - Don't adjust these unless you really need to!
-#
-BAUD_RATE=115177 # Baud rate, in symbols/second.
-OVERSAMPLING=8	 # FSK Demod Oversampling rate. Not used in GQRX mode.
-# Known-Working Modem Settings:
-# 115177 baud (Pi Zero W @ '115200' baud), 8x oversampling.
-# 9600 baud, 100x oversampling.
-# 4800 baud, 200x oversampling.
-#BAUD_RATE=4800
-#OVERSAMPLING=200
 
 
 #
@@ -124,7 +124,7 @@ if [ "$RX_FLOW" = "IQ" ]; then
 
 	rtl_sdr -s $SDR_RATE -f $RX_SSB_FREQ -g $GAIN - | \
 	./fsk_demod --cu8 -s --stats=100 2 $SDR_RATE $BAUD_RATE - - 2> >(python fskdemodgui.py --wide) | \
-	./drs232_ldpc - -  -vv 2> /dev/null | \
+	./$FRAMING_MODE - -  -vv 2> /dev/null | \
 	python rx_ssdv.py --partialupdate 16
 elif [ "$RX_FLOW" = "GQRX" ]; then
 	# GQRX Mode - take 48kHz real samples from GQRX via UDP.
@@ -134,7 +134,7 @@ elif [ "$RX_FLOW" = "GQRX" ]; then
 	echo "Receiving samples from GQRX on UDP:localhost:7355"
 	nc -l -u localhost 7355 | \
 	./fsk_demod -s --stats=100 -b 1 -u 23500 2 48000 $BAUD_RATE - - 2> >(python fskdemodgui.py --wide) | \
-	./drs232_ldpc - -  -vv 2> /dev/null | \
+	./$FRAMING_MODE - -  -vv 2> /dev/null | \
 	python rx_ssdv.py --partialupdate 4
 else
 	# If using a RTLSDR that has a DC spike (i.e. either has a FitiPower FC0012 or Elonics E4000 Tuner),
@@ -145,7 +145,7 @@ else
 	csdr bandpass_fir_fft_cc 0.05 0.45 0.05 | csdr realpart_cf | \
 	csdr gain_ff 0.5 | csdr convert_f_s16 | \
 	./fsk_demod -s --stats=100 2 $SDR_RATE $BAUD_RATE - - 2> >(python fskdemodgui.py --wide) | \
-	./drs232_ldpc - -  -vv 2> /dev/null | \
+	./$FRAMING_MODE - -  -vv 2> /dev/null | \
 	python rx_ssdv.py --partialupdate 16
 
 fi

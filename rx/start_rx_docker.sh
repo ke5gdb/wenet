@@ -32,6 +32,7 @@ set -x
 : "${WEB_PORT:=5003}"
 : "${IMAGE_PORT:=7890}"
 : "${UPLOAD_ENABLE:=1}"
+: "${FRAMING_MODE:=drs232_ldpc}"
 
 # Start up the SSDV Uploader script and push it into the background.
 if [ "$UPLOAD_ENABLE" == "1" ] ; then
@@ -74,16 +75,16 @@ if [ "$SDR_TYPE" = "RTLSDR" ] ; then
   # Start up the receive chain.
   echo "Using Complex Samples."
   rtl_sdr -d "$DEVICE" -s "$SDR_RATE" -f "$RX_SSB_FREQ" -g "$GAIN" - | \
-  ./fsk_demod --cu8 -s --stats=100 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RX_SSB_FREQ --samplerate $SDR_RATE) | \
-  ./drs232_ldpc - -  -vv 2> /dev/null | \
-  python3 rx_ssdv.py --partialupdate 16 --headless & 
+  ./fsk_demod --cu8 -s --stats=100 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RX_SSB_FREQ --samplerate $SDR_RATE --image_port $IMAGE_PORT) | \
+  ./$FRAMING_MODE - -  -vv 2> /dev/null | \
+  python3 rx_ssdv.py --partialupdate 16 --headless --image_port $IMAGE_PORT
 elif [ "$SDR_TYPE" = "KA9Q" ] ; then
   # Start receiver
   echo "Starting pcmrecord and demodulator"
   pcmrecord --catmode --raw "$DEVICE" --timeout 5 | \
   ./fsk_demod --cs16 -s --stats=100 2 "$SDR_RATE" "$BAUD_RATE" - - 2> >(python3 fskstatsudp.py --rate 1 --freq $RX_SSB_FREQ --samplerate $SDR_RATE --image_port $IMAGE_PORT) | \
-  ./drs232_ldpc - -  -vv 2> /dev/null | \
-  python3 rx_ssdv.py --partialupdate 16 --headless --image_port $IMAGE_PORT & 
+  ./$FRAMING_MODE - -  -vv 2> /dev/null | \
+  python3 rx_ssdv.py --partialupdate 16 --headless --image_port $IMAGE_PORT
 else
   echo "No valid SDR type specified! Please enter RTLSDR or KA9Q!"
 fi
