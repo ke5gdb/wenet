@@ -60,8 +60,7 @@ SDR_RATE=$(("$BAUD_RATE" * "$OVERSAMPLING"))
 # The fsk_demod acquisition window is from Rs/2 to Fs/2 - Rs.
 # Given Fs is Rs * Os  (Os = oversampling), we can calculate the required tuning offset with the equation:
 # Offset = Fcenter - Rs*(Os/4 - 0.25)
-# /1 to return integer
-RX_SSB_FREQ=$(echo "($RXFREQ - $BAUD_RATE * ($OVERSAMPLING/4 - 0.25))/1" | bc)
+RX_SSB_FREQ=$(echo "scale=2; ($RXFREQ - $BAUD_RATE * ($OVERSAMPLING/4 - 0.25))" | bc)
 
 echo "Using SDR Sample Rate: $SDR_RATE Hz"
 echo "Using SDR Centre Frequency: $RX_SSB_FREQ Hz"
