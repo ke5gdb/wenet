@@ -17,6 +17,7 @@ import os
 import subprocess
 import traceback
 from radio_wrappers import *
+import PowerTelem
 
 
 parser = argparse.ArgumentParser()
@@ -90,9 +91,7 @@ else:
 	sys.exit(1)
 
 if args.power_telem:
-	# placeholder
-	# crate power telem object, etc here
-	pass
+	power_telem = PowerTelem.WenetPiHAT()
 
 # Start up Wenet TX.
 picam = None
@@ -127,8 +126,12 @@ def handle_gps_data(gps_data):
 	except:
 		cam_metadata = None
 
+	power_data = None
+	if power_telem:
+		power_data = power_telem.read()
+
 	# Immediately generate and transmit a GPS packet.
-	tx.transmit_gps_telemetry(gps_data, cam_metadata)
+	tx.transmit_gps_telemetry(gps_data, cam_metadata, power_data)
 
 	# If we have GPS fix, update the max altitude field.
 	if (gps_data['altitude'] > max_altitude) and (gps_data['gpsFix'] == 3):
@@ -266,19 +269,3 @@ except KeyboardInterrupt:
 	tx.close()
 	if gps:
 		gps.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
