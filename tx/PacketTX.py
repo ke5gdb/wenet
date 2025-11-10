@@ -257,7 +257,7 @@ class PacketTX(object):
         print(log_string)
 
 
-    def transmit_gps_telemetry(self, gps_data, cam_metadata=None):
+    def transmit_gps_telemetry(self, gps_data, cam_metadata=None, power_data=None):
         """ Generate and Transmit a GPS Telemetry Packet.
 
         Host platform CPU speed, temperature and load averages are collected and included in this packet too.
@@ -309,10 +309,24 @@ class PacketTX(object):
             if 'FocusFoM' in cam_metadata:
                 _focus_fom = float(cam_metadata['FocusFoM'])
 
+        _batt_v = 0
+        _batt_i = 0
+        _aux_temp = -999.0
+        if power_data:
+            if 'batt_v' in power_data:
+                _batt_v = power_data['batt_v']
+            
+            if 'batt_i' in power_data:
+                _batt_i = power_data['batt_i']
+
+            if 'aux_temp' in power_data:
+                _aux_temp = power_data['aux_temp']
+
+
 
         # Construct the packet
         try:
-            gps_packet = struct.pack(">BHIBffffffBBBffHfffffff",
+            gps_packet = struct.pack(">BHIBffffffBBBffHfffffffHHf",
                 1,  # Packet ID for the GPS Telemetry Packet.
                 gps_data['week'],
                 int(gps_data['iTOW']*1000), # Convert the GPS week value to milliseconds, and cast to an int.
@@ -336,7 +350,11 @@ class PacketTX(object):
                 _disk_percent,
                 _lens_position,
                 _sensor_temperature,
-                _focus_fom
+                _focus_fom,
+                # New fields 2025-11
+                _batt_v,
+                _batt_i,
+                _aux_temp
                 )
 
             self.queue_telemetry_packet(gps_packet)

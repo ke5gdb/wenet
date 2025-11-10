@@ -43,6 +43,7 @@ parser.add_argument("--use_focus_fom", action='store_true', default=False, help=
 parser.add_argument("--num_images", type=int, default=5, help="Number of images to capture on each cycle. (Default: 5)")
 parser.add_argument("--image_delay", type=float, default=1.0, help="Delay time between each image capture. (Default: 1 second)")
 parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Show additional debug info.")
+parser.add_argument("--power_telem", action='store_true', default=False, help="Transmit power telemetry collected from ADS1115")
 args = parser.parse_args()
 
 if args.baudrate == None:
@@ -88,6 +89,10 @@ else:
 	logging.critical("No radio type specified! Exiting")
 	sys.exit(1)
 
+if args.power_telem:
+	# placeholder
+	# crate power telem object, etc here
+	pass
 
 # Start up Wenet TX.
 picam = None

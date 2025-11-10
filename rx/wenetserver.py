@@ -169,6 +169,17 @@ def handle_gps_telemetry(gps_data):
             if gps_data['focus_fom'] > -999.0:
                 _extra_fields['focus_fom'] = gps_data['focus_fom']
 
+        if 'batt_v' in gps_data:
+            if gps_data['batt_v'] > 0:
+                _extra_fields['batt_v'] = gps_data['batt_v']
+            
+            if gps_data['batt_i'] > 0:
+                _extra_fields['batt_i'] = gps_data['batt_i']
+
+        if 'aux_temp' in gps_data:
+            if gps_data['aux_temp'] > -999.0:
+                _extra_fields['aux_temp'] = gps_data['aux_temp']
+
         sondehub.add_telemetry(
             current_callsign + "-Wenet",
             gps_data['timestamp'] + "Z",
