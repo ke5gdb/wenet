@@ -87,7 +87,7 @@ class LoRaRFM98W(object):
         self.spi = self.BOARD.SpiDev()
         self.verbose = verbose
         # set the callbacks for DIO0..5 IRQs.
-        self.BOARD.add_events(self._dio0, self._dio1, self._dio2, self._dio3, self._dio4, self._dio5)
+        # self.BOARD.add_events(self._dio0, self._dio1, self._dio2, self._dio3, self._dio4, self._dio5)
         # set mode to sleep and read all registers
         self.set_mode(MODE.SLEEP)
         self.backup_registers = self.get_all_registers()
