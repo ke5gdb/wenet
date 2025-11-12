@@ -22,6 +22,7 @@
 # THE SOFTWARE.
 #
 import time
+import struct
 import smbus2
 
 _REGISTER_MASK = 0x03
@@ -164,14 +165,14 @@ class ADS1115:
         while not self._read_register(_REGISTER_CONFIG) & _OS_NOTBUSY:
             time.sleep(0.001)
         res = self._read_register(_REGISTER_CONVERT)
-        return res if res < 32768 else res - 65536
+        return struct.unpack(">h", res.to_bytes(2, "big"))[0]
 
     def read_rev(self):
         """Read voltage between a channel and GND. and then start
            the next conversion."""
         res = self._read_register(_REGISTER_CONVERT)
         self._write_register(_REGISTER_CONFIG, self.mode)
-        return res if res < 32768 else res - 65536
+        return struct.unpack(">h", res.to_bytes(2, "big"))[0]
 
     def alert_start(self, rate=4, channel1=0, channel2=None,
                     threshold_high=0x4000, threshold_low=0, latched=False) :
@@ -196,7 +197,7 @@ class ADS1115:
     def alert_read(self):
         """Get the last reading from the continuous measurement."""
         res = self._read_register(_REGISTER_CONVERT)
-        return res if res < 32768 else res - 65536
+        return struct.unpack(">h", res.to_bytes(2, "big"))[0]
 
 
 class ADS1113(ADS1115):
