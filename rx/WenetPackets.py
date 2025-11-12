@@ -299,7 +299,7 @@ def gps_telemetry_string(packet):
     if gps_data['error'] != 'None':
         return "GPS: ERROR Could not decode."
     else:
-        gps_data_string = "GPS: %s Lat/Lon: %.5f,%.5f Alt: %dm, Speed: H %dkph V %.1fm/s, Heading: %d deg, Fix: %s, SVs: %d, DynModel: %s, Radio Temp: %.1f, CPU Temp: %.1f, CPU Speed: %d, Load Avg: %.2f, %.2f, %.2f, Disk Usage: %.1f%%, Lens Pos: %.4f, Sensor Temp: %.1f, FocusFoM: %d" % (
+        gps_data_string = "GPS: %s Lat/Lon: %.5f,%.5f Alt: %dm, Speed: H %dkph V %.1fm/s, Heading: %d deg, Fix: %s, SVs: %d, DynModel: %s" % (
             gps_data['timestamp'],
             gps_data['latitude'],
             gps_data['longitude'],
@@ -309,7 +309,11 @@ def gps_telemetry_string(packet):
             int(gps_data['heading']),
             gps_data['gpsFix_str'],
             gps_data['numSV'],
-            gps_data['dynamic_model_str'],
+            gps_data['dynamic_model_str']
+            )
+        
+        if gps_data['cpu_temp'] != 21845:
+            gps_data_string = gps_data_string + ", Radio Temp: %.1f, CPU Temp: %.1f, CPU Speed: %d, Load Avg: %.2f, %.2f, %.2f, Disk Usage: %.1f%%, Lens Pos: %.4f, Sensor Temp: %.1f, FocusFoM: %d" % (
             gps_data['radio_temp'],
             gps_data['cpu_temp'],
             gps_data['cpu_speed'],
@@ -320,6 +324,13 @@ def gps_telemetry_string(packet):
             gps_data['lens_position'],
             gps_data['sensor_temp'],
             int(gps_data['focus_fom'])
+            )
+
+        if gps_data['cpu_temp'] != 21845:
+            gps_data_string = gps_data_string + ", Batt V: %.2f, Batt I: %.0f, Aux Temp: %0.1f" % (
+            gps_data['batt_v'],
+            gps_data['batt_i'],
+            gps_data['aux_temp']
             )
 
         return gps_data_string
