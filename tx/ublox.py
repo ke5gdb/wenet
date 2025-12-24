@@ -113,6 +113,7 @@ MSG_CFG_ESFA = 0x4C
 MSG_CFG_ESFG = 0x4D
 MSG_CFG_ESFWT = 0x82
 MSG_CFG_HNR = 0x5C
+MSG_CFG_VALSET = 0x8A
 
 # ESF messages
 MSG_ESF_MEAS   = 0x02
@@ -178,6 +179,27 @@ RESET_SW_GPS        = 2
 RESET_HW_GRACEFUL   = 4
 RESET_GPS_STOP      = 8
 RESET_GPS_START     = 9
+
+# new UBX > 23.01 configuration keys
+CFG_UART1INPROT_UBX     = 0x10730001
+CFG_UART1INPROT_NMEA    = 0x10730002
+CFG_UART1INPROT_RTCM3X  = 0x10730004
+CFG_UART2INPROT_UBX     = 0x10750001
+CFG_UART2INPROT_NMEA    = 0x10750002
+CFG_UART2INPROT_RTCM3X  = 0x10750004
+CFG_USBINPROT_UBX       = 0x10770001
+CFG_USBINPROT_NMEA      = 0x10770002
+CFG_USBINPROT_RTCM3X    = 0x10770004
+
+CFG_UART1OUTPROT_UBX    = 0x10740001
+CFG_UART1OUTPROT_NMEA   = 0x10740002
+CFG_UART1OUTPROT_RTCM3X = 0x10740004
+CFG_UART2OUTPROT_UBX    = 0x10760001
+CFG_UART2OUTPROT_NMEA   = 0x10760002
+CFG_UART2OUTPROT_RTCM3X = 0x10760004
+CFG_USBOUTPROT_UBX      = 0x10780001
+CFG_USBOUTPROT_NMEA     = 0x10780002
+CFG_USBOUTPROT_RTCM3X   = 0x10780004
 
 class UBloxError(Exception):
     '''Ublox error class'''
@@ -257,7 +279,7 @@ class UBloxDescriptor:
                 break
 
         if self.count_field == '_remaining':
-            count = len(buf) / struct.calcsize(self.format2)
+            count = len(buf) // struct.calcsize(self.format2)
 
         if count == 0:
             msg._unpacked = True
@@ -921,6 +943,15 @@ class UBlox:
         payload = struct.pack('<HHIBBBBBBBBBBHIBBBBBBHII', 0, 4, 0, 0, 0, min_sats, max_sats, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         self.send_message(CLASS_CFG, MSG_CFG_NAVX5, payload)
 
+    def configure_value_set(self, key, value: bytes | bool, layers=1, transaction=0):
+        '''set configuration field with UBX > 23.01 scheme'''
+        if isinstance(value, bool):
+            _value = bytes((value,))
+        else:
+            _value = value
+        payload = struct.pack('<BBBBI', 0, layers, transaction, 0, key) + _value
+        self.send_message(CLASS_CFG, MSG_CFG_VALSET, payload)
+
     def module_reset(self, set, mode):
         ''' Reset the module for hot/warm/cold start'''
         payload = struct.pack('<HBB', set, mode, 0)
@@ -947,7 +978,7 @@ class UBloxGPS(object):
         'iTOW':         0,      # GPS Seconds in week.
         'leapS':        0,      # GPS Leap Seconds (Difference between GPS time and UTC time)
         'timestamp':    " ",    # ISO-8601 Compliant Date-code (generate by Python's datetime.isoformat() function)
-        'datetime': datetime.datetime.utcnow(),       # Fix time as a datetime object.
+        'datetime': datetime.datetime.now(datetime.timezone.utc),       # Fix time as a datetime object.
         'dynamic_model': 255      # Current dynamic model in use.
     }
     # Lock files for writing and reading to the internal state dictionary.
@@ -960,7 +991,8 @@ class UBloxGPS(object):
             dynamic_model=DYNAMIC_MODEL_AIRBORNE1G,
             debug_ptr = None,
             log_file = None,
-            ntpd_update = False):
+            ntpd_update = False,
+            prot_ver=23.01):
 
         """ Initialise a UBloxGPS Abstraction layer object.
         
@@ -1003,6 +1035,7 @@ class UBloxGPS(object):
         self.debug_ptr = debug_ptr
         self.callback = callback
         self.ntpd_shm = None
+        self.prot_ver = prot_ver
 
 
         # Open log file, if one has been given.
@@ -1036,26 +1069,77 @@ class UBloxGPS(object):
     def setup_ublox(self):
         """ Configure the uBlox GPS """
         self.gps.set_binary()
-        self.gps.configure_poll_port()
-        self.gps.configure_poll(CLASS_CFG, MSG_CFG_USB)
-        self.gps.configure_port(port=PORT_SERIAL1, inMask=1, outMask=0)
-        self.gps.configure_port(port=PORT_USB, inMask=1, outMask=1)
-        self.gps.configure_port(port=PORT_SERIAL2, inMask=1, outMask=0)
-        self.gps.configure_poll_port()
-        self.gps.configure_poll_port(PORT_SERIAL1)
-        self.gps.configure_poll_port(PORT_SERIAL2)
-        self.gps.configure_poll_port(PORT_USB)
-        self.gps.configure_solution_rate(rate_ms=self.update_rate_ms)
+        
+        # Query protocol version
+        # Assume < 23.01 unless PROTO_VER tells otherwise
+        self.gps.configure_poll(CLASS_MON, MSG_MON_VER)
+        msg = self.gps.receive_message()
+        while msg.name() != "MON_VER":
+            time.sleep(0.05)
+            msg = self.gps.receive_message()
 
-        self.gps.set_preferred_dynamic_model(self.dynamic_model)
+        msg.unpack()
+        proto_read = False
+        for rec in msg._recs:
+            if 'extension' in rec:
+                extension = rec['extension'].split(b'\0', 1)[0].decode('utf-8')
+                if 'PROTVER' in extension:
+                    self.prot_ver = float(extension.split('=')[1])
+                    self.debug_message(f"Read UBX protocol version: {self.prot_ver}")
+                    proto_read = True
 
-        self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_POSLLH, 1)
-        self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_STATUS, 1)
-        self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_SOL, 1)
-        self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_VELNED, 1)
-        self.gps.configure_message_rate(CLASS_CFG, MSG_CFG_NAV5, 1)
-        self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_TIMEGPS, 1)
-        self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_CLOCK, 5)
+        if not proto_read:
+            self.debug_message(f"Using UBX protocol version: {self.prot_ver}")
+
+        # For 6/7/8 series modules
+        if self.prot_ver <= 23.01:
+            self.gps.configure_poll_port()
+            self.gps.configure_poll(CLASS_CFG, MSG_CFG_USB)
+            self.gps.configure_port(port=PORT_SERIAL1, inMask=1, outMask=1)
+            self.gps.configure_port(port=PORT_USB, inMask=1, outMask=1)
+            self.gps.configure_port(port=PORT_SERIAL2, inMask=1, outMask=1)
+            self.gps.configure_poll_port()
+            self.gps.configure_poll_port(PORT_SERIAL1)
+            self.gps.configure_poll_port(PORT_SERIAL2)
+            self.gps.configure_poll_port(PORT_USB)
+
+            self.gps.configure_solution_rate(rate_ms=self.update_rate_ms)
+
+            self.gps.set_preferred_dynamic_model(self.dynamic_model)
+
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_POSLLH, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_STATUS, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_SOL, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_VELNED, 1)
+            self.gps.configure_message_rate(CLASS_CFG, MSG_CFG_NAV5, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_TIMEGPS, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_CLOCK, 5)
+        else:
+            # set UBX protocol to be only protocol on USB and UARTs
+            self.gps.configure_value_set(CFG_UART1INPROT_UBX, True)
+            self.gps.configure_value_set(CFG_UART2INPROT_UBX, True)
+            self.gps.configure_value_set(CFG_USBINPROT_UBX, True)
+
+            self.gps.configure_value_set(CFG_UART1OUTPROT_UBX, True)
+            self.gps.configure_value_set(CFG_UART1OUTPROT_NMEA, False)
+            self.gps.configure_value_set(CFG_UART1OUTPROT_RTCM3X, False)
+            self.gps.configure_value_set(CFG_UART2OUTPROT_UBX, True)
+            self.gps.configure_value_set(CFG_UART2OUTPROT_NMEA, False)
+            self.gps.configure_value_set(CFG_UART2OUTPROT_RTCM3X, False)
+            self.gps.configure_value_set(CFG_USBOUTPROT_UBX, True)
+            self.gps.configure_value_set(CFG_USBOUTPROT_NMEA, False)
+            self.gps.configure_value_set(CFG_USBOUTPROT_RTCM3X, False)
+
+            self.gps.configure_solution_rate(rate_ms=self.update_rate_ms)
+
+            self.gps.set_preferred_dynamic_model(self.dynamic_model)
+
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_POSLLH, 0)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_STATUS, 0)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_VELNED, 0)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_PVT, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_TIMEGPS, 1)
+            self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_CLOCK, 5)
 
     def debug_message(self, message):
         """ Write a debug message.
@@ -1173,6 +1257,17 @@ class UBloxGPS(object):
                 self.write_state('heading', msg.heading*1.0e-5)
                 self.write_state('ascent_rate', -1.0*msg.velD/100.0)
 
+            elif msg.name() == "NAV_PVT":
+                msg.unpack()
+                self.write_state('numSV', msg.numSV)
+                self.write_state('gpsFix', msg.fixType)
+                self.write_state('latitude', msg.Latitude*1.0e-7)
+                self.write_state('longitude', msg.Longitude*1.0e-7)
+                self.write_state('altitude', msg.height*1.0e-3)
+                self.write_state('ground_speed', msg.gSpeed*0.0036) # Convert to kph
+                self.write_state('heading', msg.headMot*1.0e-5)
+                self.write_state('ascent_rate', -1.0*msg.velD/1000.0)
+
             elif msg.name() == "NAV_TIMEGPS":
                 msg.unpack()
                 self.write_state('week',msg.week)
@@ -1289,7 +1384,8 @@ if __name__ == "__main__":
         callback=gps_callback, 
         update_rate_ms=500, 
         dynamic_model=DYNAMIC_MODEL_AIRBORNE1G, 
-        ntpd_update=args.ntp
+        ntpd_update=args.ntp,
+        debug_ptr=logging.info
         )
 
     try:

@@ -17,6 +17,7 @@ import os
 import subprocess
 import traceback
 from radio_wrappers import *
+import PowerTelem
 
 
 parser = argparse.ArgumentParser()
@@ -43,6 +44,7 @@ parser.add_argument("--use_focus_fom", action='store_true', default=False, help=
 parser.add_argument("--num_images", type=int, default=5, help="Number of images to capture on each cycle. (Default: 5)")
 parser.add_argument("--image_delay", type=float, default=1.0, help="Delay time between each image capture. (Default: 1 second)")
 parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Show additional debug info.")
+parser.add_argument("--power_telem", action='store_true', default=False, help="Transmit power telemetry collected from ADS1115")
 args = parser.parse_args()
 
 if args.baudrate == None:
@@ -88,6 +90,8 @@ else:
 	logging.critical("No radio type specified! Exiting")
 	sys.exit(1)
 
+if args.power_telem:
+	power_telem = PowerTelem.WenetPiHAT()
 
 # Start up Wenet TX.
 picam = None
@@ -122,8 +126,12 @@ def handle_gps_data(gps_data):
 	except:
 		cam_metadata = None
 
+	power_data = None
+	if power_telem:
+		power_data = power_telem.read()
+
 	# Immediately generate and transmit a GPS packet.
-	tx.transmit_gps_telemetry(gps_data, cam_metadata)
+	tx.transmit_gps_telemetry(gps_data, cam_metadata, power_data)
 
 	# If we have GPS fix, update the max altitude field.
 	if (gps_data['altitude'] > max_altitude) and (gps_data['gpsFix'] == 3):
@@ -283,19 +291,3 @@ except KeyboardInterrupt:
 	tx.close()
 	if gps:
 		gps.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
