@@ -18,3 +18,4 @@ picam_temp*
 benchmarking/generated/
 benchmarking/samples/
 benchmarking/stats.txt
+*venv*
