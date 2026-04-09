@@ -433,6 +433,11 @@ class RFM98W_I2S(RFM98W):
 
 
 
+    # Set to a packet count value to trigger a simulated tx_thread hang at that point.
+    # e.g. _SIMULATE_HANG_AT = 200  (hangs after ~10 seconds at 96kbaud)
+    # Set to None to disable.
+    _SIMULATE_HANG_AT = None
+
     def transmit_packet(self, packet):
         """
         Modulate audio data, using a I2S.
@@ -455,6 +460,12 @@ class RFM98W_I2S(RFM98W):
             frame_length = (len(buffer)//self.channels//self.audio_width)
             if frame_length % self.periodsize != 0:
                 logging.critical(f"buffer frames length {frame_length} != periodsize {self.periodsize}")
+
+            if self._SIMULATE_HANG_AT is not None and self.tx_packet_count >= self._SIMULATE_HANG_AT:
+                logging.critical(f"WATCHDOG TEST: simulating pcm.write() hang at packet {self.tx_packet_count}")
+                import threading
+                threading.Event().wait()  # blocks forever, tx_packet_count stops incrementing
+
             self.pcm.write(buffer)
 
         super().transmit_packet(packet) # used to reinit the radio occasionally

@@ -12,10 +12,12 @@ import WenetPiCamera2
 import ublox
 import argparse
 import logging
+import signal
 import time
 import os
 import subprocess
 import traceback
+from threading import Thread
 from radio_wrappers import *
 import PowerTelem
 
@@ -92,11 +94,88 @@ else:
 
 if args.power_telem:
 	power_telem = PowerTelem.WenetPiHAT()
+else:
+	power_telem = None
+
+
+# Hardware Watchdog
+#
+# One-time setup on the Wenet Pi (survives reboots):
+#
+# 1. Raspberry Pi OS enables a systemd-managed watchdog via
+#    /usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf
+#    (RuntimeWatchdogSec=1m, RebootWatchdogSec=2m). Override it and reboot:
+#      sudo mkdir -p /etc/systemd/system.conf.d/
+#      sudo tee /etc/systemd/system.conf.d/no-watchdog.conf << 'EOF'
+#      [Manager]
+#      RuntimeWatchdogSec=off
+#      RebootWatchdogSec=off
+#      WatchdogDevice=
+#      EOF
+#      sudo reboot
+#    Verify both are free after reboot: sudo fuser /dev/watchdog /dev/watchdog0  (should return nothing)
+#
+# 2. Allow non-root access to /dev/watchdog:
+#      sudo sh -c 'echo "KERNEL==\"watchdog\", GROUP=\"gpio\", MODE=\"0660\"" > /etc/udev/rules.d/60-watchdog.rules'
+#      sudo udevadm control --reload-rules && sudo udevadm trigger --action=change /dev/watchdog
+#
+# The BCM283x watchdog has a fixed 15-second timeout.
+# This class pets it only when tx_packet_count is still incrementing,
+# so a hung pcm.write() (or any other tx_thread block) triggers a hardware reset.
+
+class HardwareWatchdog:
+    def __init__(self, radio, pet_interval=5, device='/dev/watchdog'):
+        self.radio = radio
+        self.pet_interval = pet_interval
+        self.device = device
+        self._wdog = None
+        self._running = False
+
+    def start(self):
+        try:
+            self._wdog = open(self.device, 'wb', buffering=0)
+            logging.info(f"Watchdog: opened {self.device} (BCM283x, 15s timeout)")
+        except Exception as e:
+            logging.warning(f"Watchdog: could not open {self.device}: {e}")
+            return
+        self._running = True
+        t = Thread(target=self._loop, daemon=True)
+        t.start()
+
+    def _loop(self):
+        last_count = self.radio.tx_packet_count
+        while self._running:
+            time.sleep(self.pet_interval)
+            current_count = self.radio.tx_packet_count
+            if current_count != last_count:
+                try:
+                    self._wdog.write(b'1')
+                except Exception as e:
+                    logging.error(f"Watchdog: pet failed: {e}")
+                last_count = current_count
+            else:
+                logging.warning("Watchdog: tx_packet_count stalled — TX thread may be frozen, not petting")
+
+    def disarm(self):
+        """Write magic 'V' before closing to prevent an unwanted reboot on clean shutdown."""
+        self._running = False
+        if self._wdog:
+            try:
+                self._wdog.write(b'V')
+                self._wdog.close()
+                logging.info("Watchdog: disarmed cleanly")
+            except Exception as e:
+                logging.warning(f"Watchdog: disarm failed: {e}")
+            self._wdog = None
 
 # Start up Wenet TX.
 picam = None
 tx = PacketTX.PacketTX(radio=radio, callsign=callsign, log_file="debug.log", udp_listener=55674)
 tx.start_tx()
+
+# Start hardware watchdog. Pets /dev/watchdog only when tx_packet_count moves.
+watchdog = HardwareWatchdog(radio)
+watchdog.start()
 
 # Sleep for a second to let the transmitter fire up.
 time.sleep(1)
@@ -255,6 +334,11 @@ picam.run(destination_directory="./tx_images/",
 	)
 
 
+# Treat SIGTERM (systemctl stop) the same as Ctrl-C so the watchdog gets disarmed cleanly.
+def _sigterm_handler(signum, frame):
+    raise KeyboardInterrupt()
+signal.signal(signal.SIGTERM, _sigterm_handler)
+
 # Main 'loop'.
 try:
 	while True:
@@ -265,6 +349,7 @@ try:
 # Only really used during debugging.
 except KeyboardInterrupt:
 	print("Closing")
+	watchdog.disarm()
 	picam.stop()
 	tx.close()
 	if gps:

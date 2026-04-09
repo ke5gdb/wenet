@@ -327,14 +327,30 @@ class WenetPiCamera2(object):
 
             try:
                 self.capture_in_progress = True
-                # Capture image
-                metadata = self.cam.capture_file("%s_%d.jpg" % (self.temp_filename_prefix,i))
-                # Save metadata for this frame 
+                # Capture image in a thread so we can impose a timeout.
+                # cam.capture_file() can hang indefinitely if libcamera gets stuck.
+                _capture_result = [None]
+                _capture_exc = [None]
+                def _do_capture():
+                    try:
+                        _capture_result[0] = self.cam.capture_file("%s_%d.jpg" % (self.temp_filename_prefix, i))
+                    except Exception as e:
+                        _capture_exc[0] = e
+                _t = Thread(target=_do_capture, daemon=True)
+                _t.start()
+                _t.join(timeout=60)
+                if _t.is_alive():
+                    self.debug_message("Capture timed out after 60s — camera may be hung")
+                    return False
+                if _capture_exc[0]:
+                    raise _capture_exc[0]
+                metadata = _capture_result[0]
+                # Save metadata for this frame
                 img_metadata.append(metadata.copy())
                 # Separately store the focus FoM so we can look for the max easily.
                 if 'FocusFoM' in metadata:
                     focus_fom.append(metadata['FocusFoM'])
-                
+
                 self.capture_in_progress = False
                 print(f"Image captured: {time.time()}")
                 if self.image_delay > 0:
