@@ -51,6 +51,7 @@ MSG_NAV_TIMEGPS   = 0x20
 MSG_NAV_TIMEUTC   = 0x21
 MSG_NAV_CLOCK     = 0x22
 MSG_NAV_SVINFO    = 0x30
+MSG_NAV_SAT       = 0x35
 MSG_NAV_AOPSTATUS = 0x60
 MSG_NAV_DGPS      = 0x31
 MSG_NAV_DOP       = 0x04
@@ -207,6 +208,12 @@ CFG_I2CINPROT_RTCM3X    = 0x10710004
 CFG_I2COUTPROT_UBX      = 0x10720001
 CFG_I2COUTPROT_NMEA     = 0x10720002
 CFG_I2COUTPROT_RTCM3X   = 0x10720004
+
+# CFG-MSGOUT-UBX-NAV-SAT output rate keys (SPG 5.10 / UBX >= 23.01)
+CFG_MSGOUT_NAV_SAT_I2C  = 0x20910015
+CFG_MSGOUT_NAV_SAT_UART1 = 0x20910016
+CFG_MSGOUT_NAV_SAT_UART2 = 0x20910017
+CFG_MSGOUT_NAV_SAT_USB  = 0x20910018
 
 # UART baudrate config keys (SPG 5.10 / UBX >= 23.01)
 CFG_UART1_BAUDRATE      = 0x40520001
@@ -482,6 +489,12 @@ msg_types = {
                                                   'numCh',
                                                   '<BBBBBbhi',
                                                   ['chn', 'svid', 'flags', 'quality', 'cno', 'elev', 'azim', 'prRes']),
+    (CLASS_NAV, MSG_NAV_SAT)   : UBloxDescriptor('NAV_SAT',
+                                                  '<IBBH',
+                                                  ['iTOW', 'version', 'numSvs', 'reserved1'],
+                                                  'numSvs',
+                                                  '<BBBbhhI',
+                                                  ['gnssId', 'svId', 'cno', 'elev', 'azim', 'prRes', 'flags']),
     (CLASS_RXM, MSG_RXM_SVSI)   : UBloxDescriptor('RXM_SVSI',
                                                   '<IhBB',
                                                   ['iTOW', 'week', 'numVis', 'numSV'],
@@ -1026,6 +1039,7 @@ class UBloxGPS(object):
             debug_ptr = None,
             log_file = None,
             ntpd_update = False,
+            satellites = False,
             prot_ver=23.01):
 
         """ Initialise a UBloxGPS Abstraction layer object.
@@ -1057,6 +1071,9 @@ class UBloxGPS(object):
                       This GPS time sync should be good to maybe +/- 50 mS or so.
                       This requires the ntpdshm python library: https://pypi.python.org/pypi/ntpdshm/0.2.1
 
+        satellites: If set, MSG-NAV-SAT will be requested from the GPS and included in the state data. This can be useful for
+                    troubleshooting and viewing satellite C/N0 values. 
+
 
         """
 
@@ -1069,6 +1086,7 @@ class UBloxGPS(object):
         self.debug_ptr = debug_ptr
         self.callback = callback
         self.ntpd_shm = None
+        self.satellites = satellites
         self.prot_ver = prot_ver
 
 
@@ -1088,6 +1106,7 @@ class UBloxGPS(object):
             'timestamp':     " ",
             'datetime':      datetime.datetime.now(datetime.timezone.utc),
             'dynamic_model': 255,
+            'satellites':    [],
         }
         self._state_lock = Lock()
 
@@ -1201,6 +1220,13 @@ class UBloxGPS(object):
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_PVT, 1)
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_TIMEGPS, 1)
             self.gps.configure_message_rate(CLASS_NAV, MSG_NAV_CLOCK, 5)
+            
+            nav_sat_rate = bytes([1 if self.satellites else 0])
+            self.gps.configure_value_set(CFG_MSGOUT_NAV_SAT_UART1, nav_sat_rate)
+            self.gps.configure_value_set(CFG_MSGOUT_NAV_SAT_UART2, nav_sat_rate)
+            self.gps.configure_value_set(CFG_MSGOUT_NAV_SAT_USB, nav_sat_rate)
+            if self.gps.use_i2c:
+                self.gps.configure_value_set(CFG_MSGOUT_NAV_SAT_I2C, nav_sat_rate)
 
     def debug_message(self, message):
         """ Write a debug message.
@@ -1351,6 +1377,20 @@ class UBloxGPS(object):
                 callback_thread = Thread(target=self.gps_callback, daemon=True)
                 callback_thread.start()
 
+            elif msg_name == "NAV_SAT":
+                msg.unpack()
+                satellites = []
+                for sv in msg._recs:
+                    satellites.append({
+                        'gnssId': sv.gnssId,
+                        'svId':   sv.svId,
+                        'cno':    sv.cno,
+                        'elev':   sv.elev,
+                        'azim':   sv.azim,
+                        'flags':  sv.flags,
+                    })
+                self.write_state('satellites', satellites)
+
             elif msg_name == "CFG_NAV5":
                 msg.unpack()
                 self.write_state('dynamic_model',msg.dynModel)
@@ -1393,8 +1433,53 @@ if __name__ == "__main__":
     parser.add_argument("--lockcount", default=60, type=int, help="If waitforlock is specified, wait until the GPS reports lock for this many sequential fixes. Default: 60")
     parser.add_argument("--locksats", default=None, type=int, help="If waitforlock is specified, also wait until the GPS reports this many SVs used in its solution. Default: None")
     parser.add_argument("--ntp", action='store_true', default=False, help="Push time updates into NTPDSHM.")
+    parser.add_argument("--satellites", action='store_true', default=False, help="Request satellite data from GPS.")
+    parser.add_argument("--pretty", action='store_true', default=False, help="Clear the terminal on each fix and render a formatted GPS status display.")
     parser.add_argument("-v", "--verbose", action='store_true', default=False, help="Show additional debug info.")
     args = parser.parse_args()
+
+    _GNSS_NAMES = {0: 'GPS', 1: 'SBAS', 2: 'Galileo', 3: 'BeiDou', 4: 'IMES', 5: 'QZSS', 6: 'GLONASS', 7: 'NavIC'}
+    _FIX_NAMES  = {0: 'No Fix', 1: 'DR Only', 2: '2D Fix', 3: '3D Fix', 4: 'GPS+DR', 5: 'Time Only'}
+
+    def _pretty_gps(state):
+        ts    = state.get('timestamp', '---')
+        fix   = _FIX_NAMES.get(state.get('gpsFix', 0), '?')
+        numSV = state.get('numSV', 0)
+        lat   = state.get('latitude', 0.0)
+        lon   = state.get('longitude', 0.0)
+        alt   = state.get('altitude', 0.0)
+        spd   = state.get('ground_speed', 0.0)
+        asc   = state.get('ascent_rate', 0.0)
+        hdg   = state.get('heading', 0.0)
+        sats  = state.get('satellites') or []
+
+        out = ['\033[2J\033[H']  # clear + cursor home
+        out.append(f'GPS Monitor  {ts}')
+        out.append('\u2500' * 56)
+        out.append(f'Fix: {fix:<12}  SVs used: {numSV}  tracked: {len(sats)}')
+        out.append(f'Lat: {lat:+.6f}\u00b0   Lon: {lon:+.6f}\u00b0   Alt: {alt:.1f} m')
+        out.append(f'Speed: {spd:.2f} km/h   Asc: {asc:+.2f} m/s   Hdg: {hdg:.1f}\u00b0')
+
+        if sats:
+            out.append('')
+            out.append(f"  {'GNSS':<8} {'SvID':>4}  {'dBHz':>4}  {'\u2501'*20}  {'El':>3} {'Az':>3}")
+            out.append('  ' + '\u2500' * 50)
+            for sv in sorted(sats, key=lambda s: (-(s['flags'] & 0x08), -s['cno'])):
+                used  = bool(sv['flags'] & 0x08)
+                gnss  = _GNSS_NAMES.get(sv['gnssId'], f"#{sv['gnssId']}")
+                cno   = sv['cno']
+                filled = min(cno * 20 // 50, 20)
+                bar   = f"{'█' * filled:<20}"
+                mark  = ' \u25c4' if used else ''
+                if used:
+                    color = '\033[92m'   # bright green
+                elif cno > 0:
+                    color = '\033[93m'   # yellow
+                else:
+                    color = '\033[2m'    # dim
+                out.append(f"  {color}{gnss:<8} {sv['svId']:>4}  {cno:>4}  {bar}  {sv['elev']:>3}\u00b0 {sv['azim']:>3}\u00b0{mark}\033[0m")
+
+        return '\n'.join(out) + '\n'
 
     if args.verbose:
         logging_level = logging.DEBUG
@@ -1446,7 +1531,11 @@ if __name__ == "__main__":
                 logging.info(f"GNSS lock maintained for {lock_counter} fixes! Exiting..")
                 lock_acheived = True
 
-        logging.info(f"GPS State: {state}")
+        if args.pretty:
+            sys.stdout.write(_pretty_gps(state))
+            sys.stdout.flush()
+        else:
+            logging.info(f"GPS State: {state}")
 
 
     gps = UBloxGPS(
@@ -1456,6 +1545,7 @@ if __name__ == "__main__":
         update_rate_ms=500, 
         dynamic_model=DYNAMIC_MODEL_AIRBORNE1G, 
         ntpd_update=args.ntp,
+        satellites=args.satellites,
         debug_ptr=logging.info
         )
 
