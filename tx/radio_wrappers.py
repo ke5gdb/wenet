@@ -152,12 +152,13 @@ class RFM98W(object):
         """
 
         try:
-            # Standby first (disables PA and stops carrier), then Sleep (powers down PLL).
-            # Skipping standby leaves a CW carrier
-            self.lora.set_register(0x01, 0x01) # FSK Standby (PA off, carrier stopped)
-            self.lora.set_register(0x01, 0x00) # FSK Sleep
-            logging.info("RFM98W - Set radio into sleep mode.")
-            self.lora = None
+            if self.lora is not None:
+                # Standby first (disables PA and stops carrier), then Sleep (powers down PLL).
+                # Skipping standby leaves a CW carrier
+                self.lora.set_register(0x01, 0x01) # FSK Standby (PA off, carrier stopped)
+                self.lora.set_register(0x01, 0x00) # FSK Sleep
+                logging.info("RFM98W - Set radio into sleep mode.")
+                self.lora = None
         except:
             pass
 
@@ -420,18 +421,21 @@ class RFM98W_I2S(RFM98W):
 
     def shutdown(self):
         """
-        Shutdown the RFM98W, and close the SPI and Serial connections.
+        Shutdown the RFM98W, and close the I2S audio device.
         """
 
+        # Put the radio into standby/sleep first (stops the carrier).
+        # Must happen before closing PCM, since super().shutdown() touches
+        # SPI which must still be alive at this point.
+        super().shutdown()
+
         try:
-            # Close the audio device
-            self.pcm.close()
-            logging.info("RFM98W - Closed audio device")
-            self.pcm = None
+            if self.pcm is not None:
+                self.pcm.close()
+                logging.info("RFM98W - Closed audio device")
+                self.pcm = None
         except:
             pass
-
-        return
 
 
 

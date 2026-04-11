@@ -115,8 +115,8 @@ class PacketTX(object):
 
     def start_tx(self):
         self.transmit_active = True
-        txthread = Thread(target=self.tx_thread, daemon=True)
-        txthread.start()
+        self.txthread = Thread(target=self.tx_thread, daemon=True)
+        self.txthread.start()
 
 
 
@@ -173,7 +173,11 @@ class PacketTX(object):
     def close(self):
         self.transmit_active = False
         self.udp_listener_running = False
-        #self.listener_thread.join()
+        # Wait for txthread to finish its current packet before returning.
+        # This prevents radio.shutdown() from calling GPIO.cleanup() while
+        # txthread is still mid-SPI-write, which causes SIGABRT.
+        if hasattr(self, 'txthread'):
+            self.txthread.join(timeout=5)
 
 
     # Deprecated function
