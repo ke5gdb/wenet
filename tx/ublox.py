@@ -11,7 +11,7 @@ Added UBloxGPS abstraction layer class for use with Wenet TX system.
 
 import struct
 import datetime
-from threading import Thread
+from threading import Thread, Lock
 import time, os, json, calendar, math, traceback, socket, argparse
 
 # protocol constants
@@ -629,7 +629,7 @@ class UBloxMessage:
     def pack(self):
         '''pack a message'''
         if not self.valid():
-            raise UbloxError('INVALID MESSAGE')
+            raise UBloxError('INVALID MESSAGE')
         type = self.msg_type()
         if not type in msg_types:
             raise UBloxError('Unknown message %s' % str(type))
@@ -638,7 +638,7 @@ class UBloxMessage:
     def name(self):
         '''return the short string name for a message'''
         if not self.valid():
-            raise UbloxError('INVALID MESSAGE')
+            raise UBloxError('INVALID MESSAGE')
         type = self.msg_type()
         if not type in msg_types:
             raise UBloxError('Unknown message %s length=%u' % (str(type), len(self._buf)))
@@ -853,7 +853,7 @@ class UBlox:
     def set_binary(self):
         '''put a UBlox into binary mode using a NMEA string'''
         if not self.read_only:
-            logging.info("try set binary at %u" % self.baudrate)
+            print("try set binary at %u" % self.baudrate)
             self.send_nmea("$PUBX,41,0,0007,0001,%u,0" % self.baudrate)
             self.send_nmea("$PUBX,41,1,0007,0001,%u,0" % self.baudrate)
             self.send_nmea("$PUBX,41,2,0007,0001,%u,0" % self.baudrate)
@@ -1019,30 +1019,6 @@ class UBlox:
 class UBloxGPS(object):
     """ UBlox GPS Abstraction Layer Class """
 
-    # Internal state dictionary, which is updated on receipt of messages.
-    state = {
-        # Basic Position Information
-        'latitude':     0.0,
-        'longitude':    0.0,
-        'altitude':     0.0,    # Altitude in metres.
-        'ground_speed': 0.0,    # Ground speed in KPH
-        'ascent_rate':  0.0,    # Descent rate in m/s
-        'heading':      0.0,    # Heading in degrees True.
-
-        # GPS State
-        'gpsFix':       0,      # GPS Fix State. 0 = No Fix, 2 = 2D Fix, 3 = 3D Fix, 5 = Time only. 
-        'numSV':        0,      # Number of satellites in use.
-        'week':         0,      # GPS Week
-        'iTOW':         0,      # GPS Seconds in week.
-        'leapS':        0,      # GPS Leap Seconds (Difference between GPS time and UTC time)
-        'timestamp':    " ",    # ISO-8601 Compliant Date-code (generate by Python's datetime.isoformat() function)
-        'datetime': datetime.datetime.now(datetime.timezone.utc),       # Fix time as a datetime object.
-        'dynamic_model': 255      # Current dynamic model in use.
-    }
-    # Lock files for writing and reading to the internal state dictionary.
-    state_writelock = False
-    state_readlock = False
-
     def __init__(self,port='/dev/ublox', baudrate=115200, timeout=2,
             callback=None,
             update_rate_ms=500,
@@ -1096,6 +1072,25 @@ class UBloxGPS(object):
         self.prot_ver = prot_ver
 
 
+        # Internal state dictionary, updated on receipt of GPS messages.
+        self.state = {
+            'latitude':      0.0,
+            'longitude':     0.0,
+            'altitude':      0.0,
+            'ground_speed':  0.0,
+            'ascent_rate':   0.0,
+            'heading':       0.0,
+            'gpsFix':        0,
+            'numSV':         0,
+            'week':          0,
+            'iTOW':          0,
+            'leapS':         0,
+            'timestamp':     " ",
+            'datetime':      datetime.datetime.now(datetime.timezone.utc),
+            'dynamic_model': 255,
+        }
+        self._state_lock = Lock()
+
         # Open log file, if one has been given.
         if log_file != None:
             self.log_file = open(log_file,'a')
@@ -1121,7 +1116,7 @@ class UBloxGPS(object):
                 self.debug_message("Failed to start NTPD Interface")
 
         # Start RX thead.
-        self.rx_thread = Thread(target=self.rx_loop)
+        self.rx_thread = Thread(target=self.rx_loop, daemon=True)
         self.rx_thread.start()
 
     def setup_ublox(self):
@@ -1221,26 +1216,12 @@ class UBloxGPS(object):
 
     # Thread-safe read/write access into the internal state dictionary
     def write_state(self, value, parameter):
-        """ (Hopefully) thread-safe state dictionary write access """
-        while self.state_readlock:
-            pass
-
-        self.state_writelock = True
-
-        self.state[value] = parameter
-
-        self.state_writelock = False
+        with self._state_lock:
+            self.state[value] = parameter
 
     def read_state(self):
-        """ Thread-safe state dictionary read access. """
-        while self.state_writelock:
-            pass
-
-        self.state_readlock = True
-        state_copy = self.state.copy()
-        self.state_readlock = False
-
-        return state_copy
+        with self._state_lock:
+            return self.state.copy()
 
     # Function called whenever we have a new GPS fix.
     def gps_callback(self):
@@ -1365,7 +1346,9 @@ class UBloxGPS(object):
                     self.gps.set_preferred_dynamic_model(self.dynamic_model)
 
                 # Send data to the callback function.
-                callback_thread = Thread(target=self.gps_callback)
+                # daemon=True: thread won't prevent process exit and won't
+                # accumulate if the callback is occasionally slow.
+                callback_thread = Thread(target=self.gps_callback, daemon=True)
                 callback_thread.start()
 
             elif msg_name == "CFG_NAV5":
