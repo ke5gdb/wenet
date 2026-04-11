@@ -152,8 +152,10 @@ class RFM98W(object):
         """
 
         try:
-            # Set radio into FSK sleep mode
-            self.lora.set_register(0x01,0x00)
+            # Standby first (disables PA and stops carrier), then Sleep (powers down PLL).
+            # Skipping standby leaves a CW carrier
+            self.lora.set_register(0x01, 0x01) # FSK Standby (PA off, carrier stopped)
+            self.lora.set_register(0x01, 0x00) # FSK Sleep
             logging.info("RFM98W - Set radio into sleep mode.")
             self.lora = None
         except:

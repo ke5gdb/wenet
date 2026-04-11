@@ -352,5 +352,6 @@ except KeyboardInterrupt:
 	watchdog.disarm()
 	picam.stop()
 	tx.close()
+	radio.shutdown()
 	if gps:
 		gps.close()

@@ -574,7 +574,7 @@ class WenetPiCamera2(object):
 
         self.auto_capture_running = True
 
-        capture_thread = Thread(target=self.auto_capture, kwargs=dict(
+        capture_thread = Thread(target=self.auto_capture, daemon=True, kwargs=dict(
             destination_directory=destination_directory,
             tx = tx,
             post_process_ptr=post_process_ptr,

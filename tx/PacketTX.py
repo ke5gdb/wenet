@@ -115,7 +115,7 @@ class PacketTX(object):
 
     def start_tx(self):
         self.transmit_active = True
-        txthread = Thread(target=self.tx_thread)
+        txthread = Thread(target=self.tx_thread, daemon=True)
         txthread.start()
 
 
@@ -583,7 +583,7 @@ class PacketTX(object):
 
     def start_udp(self):
         if self.listener_thread is None:
-            self.listener_thread = Thread(target=self.udp_rx_thread)
+            self.listener_thread = Thread(target=self.udp_rx_thread, daemon=True)
             self.listener_thread.start()
 
 
