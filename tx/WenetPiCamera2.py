@@ -399,6 +399,7 @@ class WenetPiCamera2(object):
         # Copy best image to target filename.
         self.debug_message("Copying image to storage with filename %s" % filename)
         os.system("cp %s %s" % (best_pic, filename))
+        os.system("ln -sf %s _latest.jpg" % (filename))
 
         # Clean up temporary images.
         os.system("rm %s_*.jpg" % self.temp_filename_prefix)
