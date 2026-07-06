@@ -281,8 +281,11 @@ uploadFrameLayout.addWidget(uploadFrameHabitatStatus,3,0,1,2)
 uploadFrame.setLayout(uploadFrameLayout)
 
 def imageTelemetryHandler(packet):
-	(upload_ok, error) = image_telemetry_upload(packet, user_callsign = str(uploadFrameCallsign.text()))
+	# Not using this anymore, just hacking around it 
+	#(upload_ok, error) = image_telemetry_upload(packet, user_callsign = str(uploadFrameCallsign.text()))
 	timestamp = datetime.datetime.utcnow().strftime("%Y%m%d-%H%M%SZ")
+
+	upload_ok = True
 	
 	if upload_ok:
 		uploadFrameHabitatStatus.setText("Last Upload: %s" % datetime.datetime.utcnow().strftime("%H:%M:%S"))

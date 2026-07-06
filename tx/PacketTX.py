@@ -1,8 +1,8 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 #
 # Wenet Packet Transmitter Class
 #
-#   Copyright (C) 2018  Mark Jessop <vk5qi@rfhead.net>
+#   Copyright (C) 2025  Mark Jessop <vk5qi@rfhead.net>
 #   Released under GNU GPL v3 or later
 #
 # Frames packets (preamble, unique word, checksum)
@@ -18,7 +18,7 @@
 import sys
 import os
 import datetime
-import crcmod
+import binascii
 import json
 import shutil
 import socket
@@ -31,6 +31,7 @@ import numpy as np
 from ldpc_encoder import *
 from radio_wrappers import *
 from queue import Queue
+
 
 class PacketTX(object):
     """ Packet Transmitter Class
@@ -46,7 +47,7 @@ class PacketTX(object):
         Preamble: 16 repeats of 0x55. May not be required, but helps with timing estimation on the demod.
         Unique Word: 0xABCDEF01  Used for packet detection in the demod chain.
         Packet: 256 bytes of arbitrary binary data.
-        Checksum: CRC16 checksum.
+        Checksum: CRC16-CCITT checksum.
         Parity bits: 516 bits (zero-padded to 65 bytes) of LDPC parity bits, using a r=0.8 Repeat-accumulate code, developed by
                      Bill Cowley, VK5DSP. See ldpc_enc.c for more details.
 
@@ -92,7 +93,8 @@ class PacketTX(object):
         self.callsign = callsign.encode('ascii')
         self.fec = fec
 
-        self.crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
+        # Use the binascii crc_hqx CRC function, which is just a CRC16-CCITT if you give it the right initial value.
+        self.crc16 = lambda x: binascii.crc_hqx(x,0xffff)
 
         self.idle_message = self.frame_packet(self.idle_sequence,fec=fec)
 
@@ -593,29 +595,6 @@ class PacketTX(object):
 
 
 
-
-class BinaryDebug(object):
-    """ Debug binary 'transmitter' Class
-    Used to write packet data to a file in one-bit-per-char (i.e. 0 = 0x00, 1 = 0x01)
-    format for use with codec2-dev's fsk modulator.
-    Useful for debugging, that's about it.
-    """
-    def __init__(self):
-        self.f = open("debug.bin",'wb')
-
-    def write(self,data):
-        # TODO: Add in RS232 framing
-        raw_data = np.array([],dtype=np.uint8)
-        for d in data:
-            d_array = np.unpackbits(np.fromstring(d,dtype=np.uint8))
-            raw_data = np.concatenate((raw_data,[0],d_array[::-1],[1]))
-
-        self.f.write(raw_data.astype(np.uint8).tostring())
-
-    def close(self):
-        self.f.close()
-
-
 if __name__ == "__main__":
     """ Test script, which transmits a text message repeatedly. """
     import argparse
@@ -623,6 +602,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--rfm98w", default=None, type=int, help="If set, configure a RFM98W on this SPI device number.")
     parser.add_argument("--rfm98w-i2s", default=None, type=int, help="If set, configure a RFM98W on this SPI device number. Using I2S")
+    parser.add_argument("--binary-debug", default=False,  action="store_true", help="If set, configure a debug file based radio")
     parser.add_argument("--audio-device", default="hw:CARD=i2smaster,DEV=0", type=str, help="Alsa device string. Sets the audio device for rfm98w-i2s mode. (Default: hw:CARD=i2smaster,DEV=0)")
     parser.add_argument("--frequency", default=443.500, type=float, help="Transmit Frequency (MHz). (Default: 443.500 MHz)")
     parser.add_argument("--baudrate", default=None, type=int, help="Wenet TX baud rate. (Default: 115200 for uart and 96000 for I2S). Known working I2S baudrates: 8000, 24000, 48000, 96000")
@@ -639,6 +619,7 @@ if __name__ == "__main__":
 
     if args.verbose:
         logging_level = logging.DEBUG
+        logging.getLogger().setLevel(logging.DEBUG)
     else:
         logging_level = logging.INFO
 
@@ -663,6 +644,8 @@ if __name__ == "__main__":
             audio_device= args.audio_device,
             tx_power_dbm = args.tx_power
         )
+    elif args.binary_debug is not None:
+        radio = BinaryDebug()
     # Other radio options would go here.
     else:
         logging.critical("No radio type specified! Exiting")

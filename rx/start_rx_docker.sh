@@ -42,9 +42,9 @@ if [ "$UPLOAD_ENABLE" != "1" ] ; then
 fi
 
 if [ "$UDP_PORT" = "0" ]; then
-  python3 wenetserver.py "$MYCALL" --image_port "$IMAGE_PORT" -l "$WEB_PORT" $NO_SONDEHUB &
+  python3 wenetserver.py "$MYCALL" --image_port "$IMAGE_PORT" -l "$WEB_PORT" --mode "$FRAMING_MODE" $NO_SONDEHUB &
 else
-  python3 wenetserver.py "$MYCALL" -u "$UDP_PORT" --image_port "$IMAGE_PORT" -l "$WEB_PORT" $NO_SONDEHUB &
+  python3 wenetserver.py "$MYCALL" -u "$UDP_PORT" --image_port "$IMAGE_PORT" -l "$WEB_PORT" --mode "$FRAMING_MODE" $NO_SONDEHUB &
 fi
 WEB_VIEWER_PID=$!
 

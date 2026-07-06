@@ -568,14 +568,20 @@ class BinaryDebug(object):
         self.f = open("binary_debug.bin",'wb')
 
     def write(self,data):
-        # TODO: Add in RS232 framing
         raw_data = np.array([],dtype=np.uint8)
         for d in data:
             d_array = np.unpackbits(np.frombuffer(bytes([d]),dtype=np.uint8))
             raw_data = np.concatenate((raw_data,[0],d_array[::-1],[1]))
 
-        self.f.write(raw_data.astype(np.uint8).tostring())
+        self.f.write(raw_data.astype(np.uint8).tobytes())
+        logging.info(data.hex())
 
+    def transmit_packet(self, data):
+        self.write(data)
+        logging.info(data)
+    def scramble(self,data):
+        return data
+    
     def close(self):
         self.f.close()
 

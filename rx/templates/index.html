@@ -33,7 +33,19 @@
                   async: true,
                   success: function(data) {
                     // Update the current version field.
-                    $('#wenet-version').text("Wenet RX v" + data.version);
+                    _mode = ""
+                    if(data.mode){
+                        if(data.mode == "drs232_ldpc"){
+                            _mode = "(Legacy v1) "
+                        } 
+
+                        if (data.mode == "wenet_ldpc"){
+                            _mode = "(v2) "
+                        }
+                    }
+
+                    $('#wenet-version').text("Wenet " + _mode + "RX v" + data.version);
+                    
                     $('#my-callsign').text(data.callsign);
                   }
             });

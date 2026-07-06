@@ -53,6 +53,7 @@ latest_image_lock = Lock()
 my_callsign = "N0CALL"
 current_callsign = None
 current_modem_stats = None
+wenet_modem = None
 
 
 #
@@ -67,10 +68,11 @@ def flask_index():
 @app.route("/get_config")
 def serve_config():
     """ Return Configuration Information """
-    global my_callsign
+    global my_callsign, wenet_modem
     return json.dumps({
         "version": WENET_VERSION,
-        "callsign": my_callsign
+        "callsign": my_callsign,
+        "mode": wenet_modem
     })
 
 @app.route("/latest.jpg")
@@ -363,6 +365,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action='store_true', help="Enable debug output.")
     parser.add_argument("--no_sondehub", default=False, action='store_true', help="Disable SondeHub-Amateur position upload.")
     parser.add_argument("--image_port", type=int, default=None, help="UDP port used for communication between Wenet decoder processes. Default: 7890")
+    parser.add_argument("--mode", type=str, default=None, help="Which decoder binary is in use (drs232_ldpc, wenet_ldpc), used to indicate the rx mode in the web interface.")
     parser.add_argument("-u", "--udp_port", default=None, type=int, help="Port to emit Horus UDP packets on. (Default: 0 (disabled), Typical: 55673)")
     args = parser.parse_args()
 
@@ -375,6 +378,7 @@ if __name__ == "__main__":
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=log_level)
 
     my_callsign = args.callsign
+    wenet_modem = args.mode
 
     # Instantiate the SondeHub-Amateur Uploader
     if not args.no_sondehub:
