@@ -326,7 +326,7 @@ def gps_telemetry_string(packet):
             int(gps_data['focus_fom'])
             )
 
-        if gps_data['cpu_temp'] != 21845:
+        if gps_data['batt_v'] != 21845:
             gps_data_string = gps_data_string + ", Batt V: %.2f, Batt I: %.0f, Aux Temp: %0.1f" % (
             gps_data['batt_v'],
             gps_data['batt_i'],
