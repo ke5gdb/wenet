@@ -151,10 +151,13 @@ class RFM98W(object):
         """
 
         try:
-            # Set radio into FSK sleep mode
-            self.lora.set_register(0x01,0x00)
-            logging.info("RFM98W - Set radio into sleep mode.")
-            self.lora = None
+            if self.lora is not None:
+                # Standby first (disables PA and stops carrier), then Sleep (powers down PLL).
+                # Skipping standby leaves a CW carrier
+                self.lora.set_register(0x01, 0x01) # FSK Standby (PA off, carrier stopped)
+                self.lora.set_register(0x01, 0x00) # FSK Sleep
+                logging.info("RFM98W - Set radio into sleep mode.")
+                self.lora = None
         except:
             pass
 
@@ -417,20 +420,28 @@ class RFM98W_I2S(RFM98W):
 
     def shutdown(self):
         """
-        Shutdown the RFM98W, and close the SPI and Serial connections.
+        Shutdown the RFM98W, and close the I2S audio device.
         """
 
+        # Put the radio into standby/sleep first (stops the carrier).
+        # Must happen before closing PCM, since super().shutdown() touches
+        # SPI which must still be alive at this point.
+        super().shutdown()
+
         try:
-            # Close the audio device
-            self.pcm.close()
-            logging.info("RFM98W - Closed audio device")
-            self.pcm = None
+            if self.pcm is not None:
+                self.pcm.close()
+                logging.info("RFM98W - Closed audio device")
+                self.pcm = None
         except:
             pass
 
-        return
 
 
+    # Set to a packet count value to trigger a simulated tx_thread hang at that point.
+    # e.g. _SIMULATE_HANG_AT = 200  (hangs after ~10 seconds at 96kbaud)
+    # Set to None to disable.
+    _SIMULATE_HANG_AT = None
 
     def transmit_packet(self, packet):
         """
@@ -454,6 +465,12 @@ class RFM98W_I2S(RFM98W):
             frame_length = (len(buffer)//self.channels//self.audio_width)
             if frame_length % self.periodsize != 0:
                 logging.critical(f"buffer frames length {frame_length} != periodsize {self.periodsize}")
+
+            if self._SIMULATE_HANG_AT is not None and self.tx_packet_count >= self._SIMULATE_HANG_AT:
+                logging.critical(f"WATCHDOG TEST: simulating pcm.write() hang at packet {self.tx_packet_count}")
+                import threading
+                threading.Event().wait()  # blocks forever, tx_packet_count stops incrementing
+
             self.pcm.write(buffer)
 
         super().transmit_packet(packet) # used to reinit the radio occasionally
@@ -550,14 +567,20 @@ class BinaryDebug(object):
         self.f = open("binary_debug.bin",'wb')
 
     def write(self,data):
-        # TODO: Add in RS232 framing
         raw_data = np.array([],dtype=np.uint8)
         for d in data:
             d_array = np.unpackbits(np.frombuffer(bytes([d]),dtype=np.uint8))
             raw_data = np.concatenate((raw_data,[0],d_array[::-1],[1]))
 
-        self.f.write(raw_data.astype(np.uint8).tostring())
+        self.f.write(raw_data.astype(np.uint8).tobytes())
+        logging.info(data.hex())
 
+    def transmit_packet(self, data):
+        self.write(data)
+        logging.info(data)
+    def scramble(self,data):
+        return data
+    
     def close(self):
         self.f.close()
 

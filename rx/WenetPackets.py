@@ -8,7 +8,6 @@
 import struct
 import traceback
 import datetime
-import crcmod
 import logging
 import json
 import requests
@@ -326,7 +325,7 @@ def gps_telemetry_string(packet):
             int(gps_data['focus_fom'])
             )
 
-        if gps_data['cpu_temp'] != 21845:
+        if gps_data['batt_v'] != 21845:
             gps_data_string = gps_data_string + ", Batt V: %.2f, Batt I: %.0f, Aux Temp: %0.1f" % (
             gps_data['batt_v'],
             gps_data['batt_i'],
@@ -624,133 +623,4 @@ def sec_payload_packet_string(packet):
         _payload_type = decode_packet_type(_sec_payload['payload'])
 
         return _sec_payload_str + "Payload Type %d" % _payload_type
-
-
-
-
-#
-# Habitat Uploader functions.
-#
-
-# CRC16 function for the above.
-def crc16_ccitt(data):
-    """
-    Calculate the CRC16 CCITT checksum of *data*.
-    
-    (CRC16 CCITT: start 0xFFFF, poly 0x1021)
-    """
-    crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
-    return hex(crc16(data))[2:].upper().zfill(4)
-
-
-def image_telemetry_habitat_string(packet):
-    """ Convert an Image Telemetry packet into a habitat-compatible string. """
-
-    image_data = image_telemetry_decoder(packet)
-
-    # Check if there was a decode error. If not, produce a string.
-    if image_data['error'] != 'None':
-        return "Image Telemetry: ERROR Could not decode."
-    else:
-        # Produce a timestamp suitable for use in the habitat upload string.
-        epoch = datetime.datetime.strptime("1980-01-06 00:00:00","%Y-%m-%d %H:%M:%S")
-        elapsed = datetime.timedelta(days=(image_data['week']*7),seconds=(image_data['iTOW']))
-        timestamp = epoch + elapsed - datetime.timedelta(seconds=image_data['leapS'])
-
-        packet_time = timestamp.strftime("%H:%M:%S")
-
-        sentence = "$$%s,%d,%s,%.5f,%.5f,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.5f,%.5f,%.5f,%.5f" % (
-            image_data['callsign'],
-            image_data['sequence_number'],
-            packet_time,
-            image_data['latitude'],
-            image_data['longitude'],
-            image_data['altitude'],
-            image_data['numSV'],
-            image_data['image_id'],
-            image_data['sys_cal'],
-            image_data['euler_heading'],
-            image_data['euler_roll'],
-            image_data['euler_pitch'],
-            image_data['quaternion_x'],
-            image_data['quaternion_y'],
-            image_data['quaternion_z'],
-            image_data['quaternion_w']
-            )
-
-        checksum = crc16_ccitt(sentence[2:].encode('ascii'))
-        habitat_upload_string = sentence + "*" + checksum + "\n"
-
-        return habitat_upload_string
-
-
-
-def image_telemetry_upload(packet, user_callsign="N0CALL", upload_retry_interval=1, upload_retries=5, upload_timeout=10):
-    ''' Upload a UKHAS-standard telemetry sentence to Habitat '''
-
-    sentence = image_telemetry_habitat_string(packet)
-
-    # Generate payload to be uploaded
-    # b64encode accepts and returns bytes objects.
-    _sentence_b64 = b64encode(sentence.encode('ascii'))
-    _date = datetime.datetime.utcnow().isoformat("T") + "Z"
-    _user_call = user_callsign
-
-    _data = {
-        "type": "payload_telemetry",
-        "data": {
-            "_raw": _sentence_b64.decode('ascii') # Convert back to a string to be serialisable
-            },
-        "receivers": {
-            _user_call: {
-                "time_created": _date,
-                "time_uploaded": _date,
-                },
-            },
-    }
-
-    # The URl to upload to.
-    _url = "http://habitat.habhub.org/habitat/_design/payload_telemetry/_update/add_listener/%s" % sha256(_sentence_b64).hexdigest()
-
-    # Delay for a random amount of time between 0 and upload_retry_interval*2 seconds.
-    time.sleep(random.random()*upload_retry_interval*2.0)
-
-    _retries = 0
-
-    # When uploading, we have three possible outcomes:
-    # - Can't connect. No point re-trying in this situation.
-    # - The packet is uploaded successfuly (201 / 403)
-    # - There is a upload conflict on the Habitat DB end (409). We can retry and it might work.
-    while _retries < upload_retries:
-        # Run the request.
-        try:
-            _req = requests.put(_url, data=json.dumps(_data), timeout=upload_timeout)
-        except Exception as e:
-            logging.error("Habitat - Upload Failed: %s" % str(e))
-            return (False, "Failed to upload to Habitat: %s" % (str(e)))
-
-        if _req.status_code == 201 or _req.status_code == 403:
-            # 201 = Success, 403 = Success, sentence has already seen by others.
-            logging.info("Habitat - Uploaded sentence to Habitat successfully")
-            _upload_success = True
-            return (True, "Image Telemetry: Uploaded to Habitat Successfuly.")
-
-        elif _req.status_code == 409:
-            # 409 = Upload conflict (server busy). Sleep for a moment, then retry.
-            logging.info("Habitat - Upload conflict.. retrying.")
-            time.sleep(random.random()*upload_retry_interval)
-            _retries += 1
-
-        else:
-            logging.error("Habitat - Error uploading to Habitat. Status Code: %d." % _req.status_code)
-            return (False, "Failed to upload to Habitat: %s" % (str(e)))
-
-    if _retries == upload_retries:
-        logging.error("Habitat - Upload conflict not resolved with %d retries." % upload_retries)
-        return (False, "Failed to upload to Habitat after %d retries." % (_retries))
-
-    return
-
-
-
 

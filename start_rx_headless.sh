@@ -96,7 +96,7 @@ python ssdvuploader.py --image_port $IMAGE_PORT $MYCALL &
 SSDV_UPLOAD_PID=$!
 
 # Start the Web Interface Server
-python wenetserver.py --image_port $IMAGE_PORT $MYCALL &
+python wenetserver.py --image_port $IMAGE_PORT --mode $FRAMING_MODE $MYCALL &
 WEB_VIEWER_PID=$!
 
 
