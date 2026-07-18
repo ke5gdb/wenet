@@ -149,7 +149,7 @@ def handle_gps_telemetry(gps_data):
                 'speed': round(gps_data['ground_speed'],1)
         }
         # Add in new fields from 2024-09 if they exist and are valid
-        if 'radio_temp' in gps_data:
+        if gps_data.get('sys_telem_valid'):
             if gps_data['radio_temp'] > -999.0:
                 _extra_fields['radio_temp'] = gps_data['radio_temp']
             
@@ -171,14 +171,14 @@ def handle_gps_telemetry(gps_data):
             if gps_data['focus_fom'] > -999.0:
                 _extra_fields['focus_fom'] = gps_data['focus_fom']
 
-        if 'batt_v' in gps_data:
+        # Add in power telemetry fields from 2025-11 if they exist and are valid
+        if gps_data.get('power_telem_valid'):
             if gps_data['batt_v'] > 0:
                 _extra_fields['batt_v'] = gps_data['batt_v']
-            
+
             if gps_data['batt_i'] > 0:
                 _extra_fields['batt_i'] = gps_data['batt_i']
 
-        if 'aux_temp' in gps_data:
             if gps_data['aux_temp'] > -999.0:
                 _extra_fields['aux_temp'] = gps_data['aux_temp']
 

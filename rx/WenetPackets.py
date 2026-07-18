@@ -204,6 +204,15 @@ def gps_telemetry_decoder(packet):
     else:
         pass
 
+    # Determine which optional field groups are present before unpacking.
+    # Transmitters pad unused regions with 0x55 bytes, so test the raw byte
+    # regions rather than individual decoded values (a single decoded field
+    # can legitimately equal 0x5555 = 21845, e.g. batt_v of 21845 mV).
+    # Field regions: [0:35] base telemetry, [35:73] 2024-09 system telemetry,
+    # [73:81] 2025-11 power telemetry.
+    sys_telem_valid = packet[35:73] != b'\x55' * 38
+    power_telem_valid = packet[73:81] != b'\x55' * 8
+
     # Wrap the next bit in exception handling.
     try:
         # Unpack the packet into a list.
@@ -222,7 +231,8 @@ def gps_telemetry_decoder(packet):
         gps_data['gpsFix']  = data[11]
         gps_data['dynamic_model'] = data[12]
         # New fields 2024-09
-        if data[15] != 21845:
+        gps_data['sys_telem_valid'] = sys_telem_valid
+        if sys_telem_valid:
             gps_data['radio_temp'] = round(data[13],1)
             gps_data['cpu_temp'] = round(data[14],1)
             gps_data['cpu_speed'] = data[15]
@@ -234,7 +244,8 @@ def gps_telemetry_decoder(packet):
             gps_data['sensor_temp'] = round(data[21],1)
             gps_data['focus_fom'] = int(data[22])
         # New fields 2025-11
-        if data[23] != 21845:
+        gps_data['power_telem_valid'] = power_telem_valid
+        if power_telem_valid:
             gps_data['batt_v'] = data[23]/1000.0 # mv -> v
             gps_data['batt_i'] = data[24]
             gps_data['aux_temp'] = round(data[25],1)
@@ -311,7 +322,7 @@ def gps_telemetry_string(packet):
             gps_data['dynamic_model_str']
             )
         
-        if gps_data['cpu_temp'] != 21845:
+        if gps_data['sys_telem_valid']:
             gps_data_string = gps_data_string + ", Radio Temp: %.1f, CPU Temp: %.1f, CPU Speed: %d, Load Avg: %.2f, %.2f, %.2f, Disk Usage: %.1f%%, Lens Pos: %.4f, Sensor Temp: %.1f, FocusFoM: %d" % (
             gps_data['radio_temp'],
             gps_data['cpu_temp'],
@@ -325,7 +336,7 @@ def gps_telemetry_string(packet):
             int(gps_data['focus_fom'])
             )
 
-        if gps_data['batt_v'] != 21845:
+        if gps_data['power_telem_valid']:
             gps_data_string = gps_data_string + ", Batt V: %.2f, Batt I: %.0f, Aux Temp: %0.1f" % (
             gps_data['batt_v'],
             gps_data['batt_i'],
