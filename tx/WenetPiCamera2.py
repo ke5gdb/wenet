@@ -152,7 +152,7 @@ class WenetPiCamera2(object):
 
         # Apply a lens offset if we have been provided one.
         if self.af_custom_map:
-            tuning = Picamera2.load_tuning_file("imx708_wide.json")
+            tuning = Picamera2.load_tuning_file("imx708.json")
             map = Picamera2.find_tuning_algo(tuning, "rpi.af")["map"]
             self.debug_message(f"Default Focus Mapping: {map}")
             
