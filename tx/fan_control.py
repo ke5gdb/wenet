@@ -29,8 +29,8 @@ TEMP_MAX    = 60.0    # °C — fan fully on at or above this
 POLL_PERIOD = 2.0     # seconds between temperature reads
 
 GPIO_PIN    = 24      # BCM numbering — on/off output
-GPIO_HIGH   = 70.0    # °C — turn GPIO18 off at or above this
-GPIO_LOW    = 50.0    # °C — turn GPIO18 on at or below this
+GPIO_HIGH   = 85.0    # °C — turn GPIO18 off at or above this
+GPIO_LOW    = 75.0    # °C — turn GPIO18 on at or below this
 GPIO_DEBOUNCE = 3     # consecutive over-threshold samples needed to turn off
 
 
