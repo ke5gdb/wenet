@@ -27,7 +27,7 @@ RUN git clone https://github.com/steve-m/librtlsdr.git /root/librtlsdr && \
   rm -rf /root/librtlsdr
 
 # Compile and install ssdv.
-RUN git clone https://github.com/fsphil/ssdv.git /root/ssdv && \
+RUN git clone https://codeberg.org/fsphil/ssdv.git /root/ssdv && \
   cd /root/ssdv && \
   make && \
   DESTDIR=/root/target make install && \
