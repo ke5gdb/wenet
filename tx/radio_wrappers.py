@@ -74,6 +74,14 @@ class RFM98W(object):
         """
 
         if self.hw:
+            # Drop the radio into FSK sleep before tearing down SPI. On a re-init the
+            # chip is still in TX mode, and LongRangeMode (bit 7 of RegOpMode) can only
+            # be changed from sleep - so leaving it in TX means the sleep write below
+            # lands as 0x00 rather than 0x80, and the mode cache goes out of sync.
+            try:
+                self.lora.set_register(0x01, 0x00)
+            except:
+                pass
             self.hw.teardown()
 
         if self.led:
@@ -104,6 +112,7 @@ class RFM98W(object):
 
         # Refer https://cdn.sparkfun.com/assets/learn_tutorials/8/0/4/RFM95_96_97_98W.pdf
         self.lora.set_register(0x01,0x00) # FSK Sleep Mode
+        self.lora.mode = 0x00 # set_register bypasses LoRaRFM98W's mode cache, so sync it by hand
         self.lora.set_register(0x31,0x00) # Set Continuous Transmit Mode
 
         # Get the IC temperature
@@ -132,6 +141,7 @@ class RFM98W(object):
         # Go into TX mode.
         self.lora.set_register(0x01,0x02) # .. via FSTX mode (where the transmit frequency actually gets set)
         self.lora.set_register(0x01,0x03) # Now we're in TX mode...
+        self.lora.mode = 0x03
 
         # Seems we need to briefly sleep before we can read the register correctly.
         time.sleep(0.1)
