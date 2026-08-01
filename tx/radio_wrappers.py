@@ -82,6 +82,9 @@ class RFM98W(object):
                 self.lora.set_register(0x01, 0x00)
             except:
                 pass
+            # Drop the old LoRaRFM98W while SPI is still open - its __del__ does a final
+            # set_mode(), which raises 'Bad file descriptor' if teardown() got there first.
+            self.lora = None
             self.hw.teardown()
 
         if self.led:
