@@ -51,7 +51,6 @@ RUN unzip /tmp/ka9q-radio.zip -d /tmp && \
 RUN --mount=type=cache,target=/root/.cache/pip pip3 install \
   --user --no-warn-script-location --ignore-installed --break-system-packages \
     crc \
-    cbor2 \
     flask \
     flask-socketio \
     simple-websocket \
@@ -79,6 +78,7 @@ RUN apt-get update && \
   libusb-1.0-0 \
   python3 \
   python3-numpy \
+  python3-cbor2 \
   libbsd0 \
   libopus0 \
   libogg0 \
