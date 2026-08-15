@@ -499,6 +499,27 @@ class PacketTX(object):
 
         self.queue_telemetry_packet(_packet, repeats=repeats)
 
+    def transmit_cbor_payload_packet(self, data=[], repeats=1):
+        """ Generate and transmit a packet supplied by a 'secondary' payload, in CBOR format.
+        These will usually be provided via a UDP messaging system, described in the functions
+        further below.
+
+        Keyword Arguments:
+        data (list): The payload contents, as a list of integers. Maximum of 254 bytes.
+        repeats (int): (Optional) The number of times to transmit this packet.
+        """
+
+        # Convert the provided data to a string
+        _data = bytes(bytearray(data))
+
+        if len(_data) > 254:
+            _data = _data[:254]
+        _len = len(_data)
+
+        _packet = b"\x05" + struct.pack(">B", _len) + _data
+
+        self.queue_telemetry_packet(_packet, repeats=repeats)
+
 
     def get_cpu_temperature(self):
         """ Grab the temperature of the RPi CPU """
@@ -548,6 +569,18 @@ class PacketTX(object):
 
 
                 self.transmit_secondary_payload_packet(id=_id, data=packet_dict['packet'], repeats=_repeats)
+
+            elif packet_dict['type'] == 'WENET_TX_CBOR_PAYLOAD':
+                # This is a 'secondary' payload packet in CBOR format. The 'data' field which contains 
+                # the packet contents, provided as a *list of integers*.
+                # The user can optionally provide a 'repeats' integer, which defines the number of times
+                # to repeat transmission of the packet.
+                if 'repeats' in packet_dict:
+                    _repeats = int(packet_dict['repeats'])
+                else:
+                    _repeats = 1
+
+                self.transmit_cbor_payload_packet(data=packet_dict['packet'], repeats=_repeats)
 
             else:
                 pass

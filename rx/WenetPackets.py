@@ -14,6 +14,7 @@ import requests
 import sys
 from hashlib import sha256
 from base64 import b64encode
+import cbor2
 
 # Check if we are running in Python 2 or 3
 PY3 = sys.version_info[0] == 3
@@ -29,6 +30,7 @@ class WENET_PACKET_TYPES:
     GPS_TELEMETRY           = 0x01
     ORIENTATION_TELEMETRY   = 0x02
     SEC_PAYLOAD_TELEMETRY   = 0x03
+    CBOR_PAYLOAD_TELEMETRY  = 0x05
     IMAGE_TELEMETRY         = 0x54
     SSDV                    = 0x55
     IDLE                    = 0x56
@@ -57,6 +59,8 @@ def packet_to_string(packet):
         return orientation_telemetry_string(packet)
     elif packet_type == WENET_PACKET_TYPES.SEC_PAYLOAD_TELEMETRY:
         return sec_payload_packet_string(packet)
+    elif packet_type == WENET_PACKET_TYPES.CBOR_PAYLOAD_TELEMETRY:
+        return cbor_payload_packet_string(packet)
     elif packet_type == WENET_PACKET_TYPES.IMAGE_TELEMETRY:
         return image_telemetry_string(packet)
     elif packet_type == WENET_PACKET_TYPES.SSDV:
@@ -635,3 +639,38 @@ def sec_payload_packet_string(packet):
 
         return _sec_payload_str + "Payload Type %d" % _payload_type
 
+def cbor_payload_decode(packet):
+    """ Split a CBOR payload packet into fields """
+    # We need the packet as a string, convert to a string in case we were passed a list of bytes.
+    packet = bytes(bytearray(packet))
+
+    if len(packet) < 2:
+        return {'error': 'CBOR payload packet too short.'}
+
+    # Packet layout is [0x05][length][CBOR]. packet[0] is the packet type, so the length
+    # lives at packet[1] and the payload starts at packet[2].
+    length = packet[1]
+    payload = packet[2:2+length]
+
+    if len(payload) < length:
+        return {'error': 'CBOR payload packet truncated.'}
+
+    try:
+        return cbor2.loads(payload)
+    except:
+        return {'error': 'Could not decode CBOR payload packet.'}
+
+def cbor_payload_packet_string(packet):
+    """ Provide a string representation of a CBOR payload packet. """
+
+    _cbor_payload = cbor_payload_decode(packet)
+
+    # Check if we could split the packet into its expected contents. CBOR can legally
+    # decode to a list or an integer, so test the type before testing for the error key.
+    if not isinstance(_cbor_payload, dict):
+        return "CBOR Payload Packet: %s" % _cbor_payload
+
+    if 'error' in _cbor_payload:
+        return "CBOR Payload Packet: Error - Could not Decode."
+
+    return "CBOR Payload Packet: %s" % _cbor_payload

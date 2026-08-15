@@ -128,6 +128,13 @@ def log_telemetry_packet(packet):
 		_log_f.write(json.dumps(decoded)+"\n")
 		_log_f.close()
 
+	elif packet_type == WENET_PACKET_TYPES.CBOR_PAYLOAD_TELEMETRY:
+		decoded = cbor_payload_decode(packet)
+
+		_log_f = open(LOG_FILENAME+"_cbor.log",'a')
+		_log_f.write(json.dumps(decoded)+"\n")
+		_log_f.close()
+
 	elif packet_type == WENET_PACKET_TYPES.GPS_TELEMETRY:
 		decoded = gps_telemetry_decoder(packet)
 
@@ -202,6 +209,11 @@ while True:
 			log_telemetry_packet(data)
 
 		elif packet_type == WENET_PACKET_TYPES.SEC_PAYLOAD_TELEMETRY:
+			broadcast_telemetry_packet(data)
+			logging.info(packet_to_string(data))
+			log_telemetry_packet(data)
+
+		elif packet_type == WENET_PACKET_TYPES.CBOR_PAYLOAD_TELEMETRY:
 			broadcast_telemetry_packet(data)
 			logging.info(packet_to_string(data))
 			log_telemetry_packet(data)
