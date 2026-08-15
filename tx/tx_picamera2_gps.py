@@ -287,7 +287,7 @@ def post_process_image(filename):
 					int(max_altitude),
 					gps_state['ground_speed'],
 					gps_state['ascent_rate'])
-				gps_exif_commmand = "exiftool -GPSLatitude*=%.5f -GPSLongitude*=%.5f -GPSAltitude*=%d " % (
+				gps_exif_commmand = "exiftool -overwrite_original -GPSLatitude*=%.5f -GPSLongitude*=%.5f -GPSAltitude*=%d " % (
 					gps_state['latitude'],
 					gps_state['longitude'],
 					int(gps_state['altitude'])
