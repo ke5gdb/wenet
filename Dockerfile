@@ -51,6 +51,7 @@ RUN unzip /tmp/ka9q-radio.zip -d /tmp && \
 RUN --mount=type=cache,target=/root/.cache/pip pip3 install \
   --user --no-warn-script-location --ignore-installed --break-system-packages \
     crc \
+    cbor2 \
     flask \
     flask-socketio \
     simple-websocket \
